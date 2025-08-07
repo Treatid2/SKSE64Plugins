@@ -158,6 +158,9 @@
     <ClCompile Include="Morpher.cpp">
       <Filter>utils</Filter>
     </ClCompile>
+    <ClCompile Include="SkyrimVRESLAPI_SKSE.cpp">
+      <Filter>VRESL</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Resource.rc" />
@@ -207,6 +210,9 @@
     </Filter>
     <Filter Include="shaders\NiOverride\Effects">
       <UniqueIdentifier>{c355f50d-c27a-4353-b31b-17f66f54b5ed}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="VRESL">
+      <UniqueIdentifier>{68641a54-74cc-41bd-af80-84406257f64c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -386,6 +392,9 @@
     </ClInclude>
     <ClInclude Include="shape.hpp">
       <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="SkyrimVRESLAPI_SKSE.h">
+      <Filter>VRESL</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

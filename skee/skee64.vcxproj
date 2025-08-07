@@ -15,18 +15,18 @@
     <ProjectGuid>{FC9A1EE6-D9DB-47F6-B0ED-8867439C43CE}</ProjectGuid>
     <RootNamespace>skee64</RootNamespace>
     <Keyword>Win32Proj</Keyword>
-    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -70,7 +70,7 @@
       <SubSystem>Windows</SubSystem>
       <AdditionalDependencies>DirectXTex.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <FullProgramDatabaseFile>true</FullProgramDatabaseFile>
-      <AdditionalLibraryDirectories>$(SolutionDir)DirectXTex\Bin\Desktop_2015\$(IntDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)DirectXTex\Bin\Desktop_2022\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PreBuildEvent>
       <Command>
@@ -81,7 +81,6 @@
       </Message>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>copy "$(TargetPath)" "$(SkyrimVRPath)\Data\SKSE\Plugins\$(TargetFileName)"</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>Installing DLL...</Message>
@@ -111,7 +110,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <AdditionalDependencies>DirectXTex.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)DirectXTex\Bin\Desktop_2015\$(IntDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)DirectXTex\Bin\Desktop_2022\$(IntDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PreBuildEvent>
       <Command>
@@ -120,7 +119,6 @@
       </Message>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>copy "$(TargetPath)" "$(SkyrimVRPath)\Data\SKSE\Plugins\$(TargetFileName)"</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>Installing DLL...</Message>
@@ -176,6 +174,7 @@
     <ClCompile Include="ScaleformUtils.cpp" />
     <ClCompile Include="ShaderUtilities.cpp" />
     <ClCompile Include="SkeletonExtender.cpp" />
+    <ClCompile Include="SkyrimVRESLAPI_SKSE.cpp" />
     <ClCompile Include="StringTable.cpp" />
     <ClCompile Include="TintMaskInterface.cpp" />
     <ClCompile Include="tinyxml2.cpp" />
@@ -237,6 +236,7 @@
     <ClInclude Include="ScaleformUtils.h" />
     <ClInclude Include="ShaderUtilities.h" />
     <ClInclude Include="SkeletonExtender.h" />
+    <ClInclude Include="SkyrimVRESLAPI_SKSE.h" />
     <ClInclude Include="StringTable.h" />
     <ClInclude Include="TintMaskInterface.h" />
     <ClInclude Include="tinyxml2.h" />
@@ -246,19 +246,20 @@
     <None Include="exports.def" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\common\common_vc14.vcxproj">
+      <Project>{472e19ab-def0-42df-819b-18722e8dc822}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\DirectXTex\DirectXTex_Desktop_2022.vcxproj">
+      <Project>{371b9fa9-4c90-4ac6-a123-aced756d6c77}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\jsoncpp\jsoncpp.vcxproj">
+      <Project>{522ec01c-c40f-4de4-a83e-06c5b56620e6}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\skse64\skse64.vcxproj">
       <Project>{639411c0-fc23-4819-a0c5-429a4e5d8a51}</Project>
     </ProjectReference>
     <ProjectReference Include="..\skse64_common\skse64_common.vcxproj">
-      <Project>{20c6411c-596f-4b85-be4e-8bc91f59d8a6}</Project>
-      <Private>false</Private>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <CopyLocalSatelliteAssemblies>false</CopyLocalSatelliteAssemblies>
-      <LinkLibraryDependencies>true</LinkLibraryDependencies>
-      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
-    </ProjectReference>
-    <ProjectReference Include="..\jsoncpp\jsoncpp.vcxproj">
-      <Project>{522ec01c-c40f-4de4-a83e-06c5b56620e6}</Project>
+      <Project>{5fd1c08d-db80-480c-a1c6-f0920005cd13}</Project>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

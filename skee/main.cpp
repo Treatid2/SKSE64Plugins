@@ -46,6 +46,8 @@
 #include "PapyrusCharGen.h"
 #include "SKEEHooks.h"
 
+#include "SkyrimVRESLAPI_SKSE.h"
+
 IDebugLog	gLog;
 
 PluginHandle					g_pluginHandle = kPluginHandle_Invalid;
@@ -575,6 +577,15 @@ void SKSEMessageHandler(SKSEMessagingInterface::Message * message)
 			break;
 		case SKSEMessagingInterface::kMessage_DataLoaded:
 		{
+			SkyrimVRESLPluginAPI::GetSkyrimVRESLInterface001(g_pluginHandle, g_messaging);  // Request interface
+			if (g_SkyrimVRESLInterface) {                        // Use Interface, requires #include "SkyrimVRESLAPI.h"
+				const auto version = g_SkyrimVRESLInterface->GetBuildNumber();
+				_MESSAGE("Got SkyrimVRESL interface buildnumber %d", version);
+			}
+			else {
+				_MESSAGE("SkyrimVRESL not detected");
+			}
+
 			if (g_enableBodyGen) {
 				GetEventDispatcherList()->initScriptDispatcher.AddEventSink(&g_actorUpdateManager);
 

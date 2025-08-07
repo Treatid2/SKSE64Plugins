@@ -9,6 +9,8 @@
 #include "skse64/GameForms.h"
 #include "skse64/GameRTTI.h"
 
+#include "SkyrimVRESLAPI_SKSE.h"
+
 // trim from start
 namespace std
 {
@@ -155,20 +157,75 @@ BGSHeadPart * GetHeadPartByName(std::string & headPartName)
 	return NULL;
 }
 
-ModInfo* GetModInfoByFormID(UInt32 formId, bool allowLight)
+ModInfo* GetModInfoByFormIDNoVRESL(UInt32 formId, bool allowLight)
 {
 	DataHandler * dataHandler = DataHandler::GetSingleton();
 	UInt8 modIndex = formId >> 24;
 	return (*g_dataHandler)->modList.loadedMods[modIndex];
 }
 
-std::string GetFormIdentifier(TESForm * form)
+ModInfo* GetModInfoByFormID(UInt32 formId, bool allowLight)
+{
+	const auto& vrCompiledFiles = g_SkyrimVRESLInterface->GetCompiledFileCollection();
+
+	if (!vrCompiledFiles) {
+		return GetModInfoByFormIDNoVRESL(formId, allowLight);
+	}
+
+	UInt8 modIndex = formId >> 24;
+	UInt16 lightIndex = ((formId >> 12) & 0xFFF);
+
+	ModInfo* modInfo = nullptr;
+	if (modIndex == 0xFE && allowLight) {
+		if (lightIndex < vrCompiledFiles->smallFiles.count)
+			vrCompiledFiles->smallFiles.GetNthItem(lightIndex, modInfo);
+	}
+	else {
+		if (modIndex < 0xFE)
+			vrCompiledFiles->files.GetNthItem(modIndex, modInfo);
+	}
+
+	return modInfo;
+}
+
+std::string GetFormIdentifierNoVRESL(TESForm* form)
 {
 	char formName[MAX_PATH];
 	UInt8 modIndex = form->formID >> 24;
 	UInt32 modForm = form->formID & 0xFFFFFF;
 
 	ModInfo* modInfo = (*g_dataHandler)->modList.loadedMods[modIndex];
+	if (modInfo) {
+		sprintf_s(formName, "%s|%06X", modInfo->name, modForm);
+	}
+
+	return formName;
+}
+
+std::string GetFormIdentifier(TESForm * form)
+{
+	const auto& vrCompiledFiles = g_SkyrimVRESLInterface->GetCompiledFileCollection();
+
+	if (!vrCompiledFiles) {
+		return GetFormIdentifierNoVRESL(form);
+	}
+
+	char formName[MAX_PATH];
+	UInt8 modIndex = form->formID >> 24;
+	UInt32 modForm = form->formID & 0xFFFFFF;
+
+	ModInfo* modInfo = nullptr;
+	if (modIndex == 0xFE)
+	{
+		UInt16 lightIndex = (form->formID >> 12) & 0xFFF;
+		if (lightIndex < vrCompiledFiles->smallFiles.count)
+			vrCompiledFiles->smallFiles.GetNthItem(lightIndex, modInfo);
+	}
+	else
+	{
+		vrCompiledFiles->files.GetNthItem(modIndex, modInfo);
+	}
+
 	if (modInfo) {
 		sprintf_s(formName, "%s|%06X", modInfo->name, modForm);
 	}
