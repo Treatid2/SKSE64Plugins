@@ -84,6 +84,7 @@ bool	g_enableBodyMorph = true;
 bool	g_enableTintSync = true;
 bool	g_enableTintInventory = true;
 bool	g_enableTintHairSlot = true;
+bool	g_hookFaceOverlays = true;
 
 bool	g_playerOnly = true;
 UInt32	g_numBodyOverlays = 3;

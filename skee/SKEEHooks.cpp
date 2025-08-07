@@ -83,6 +83,7 @@ extern bool					g_extendedMorphs;
 extern bool					g_allowAllMorphs;
 extern bool					g_allowAnyRacePart;
 extern bool					g_allowAnyGenderPart;
+extern bool					g_hookFaceOverlays;
 
 RelocAddr<_CreateArmorNode> CreateArmorNode(0x001DB680);
 
@@ -1355,7 +1356,7 @@ bool MenuEventHandler_Hooked(MenuEventHandler* menuEventHandler, InputEvent* inp
 bool InstallSKEEHooks()
 {
 	// This should be sized to the actual amount used by your trampoline
-	static const size_t TRAMPOLINE_SIZE = 256;
+	static const size_t TRAMPOLINE_SIZE = 512;
 
 	if (g_trampoline) {
 		void* branch = g_trampoline->AllocateFromBranchPool(g_pluginHandle, TRAMPOLINE_SIZE);
@@ -1526,11 +1527,11 @@ bool InstallSKEEHooks()
 	RelocAddr <uintptr_t> UpdateMorph_Target(0x003EBB30 + 0x79);
 	g_branchTrampoline.Write5Call(UpdateMorph_Target.GetUIntPtr(), (uintptr_t)UpdateMorph_Hooked);
 
-#if 0
 	// Hooking Dynamic Geometry Alloc/Free to add intrusive refcount
 	// This hook is very sad but BSDynamicTriShape render data has no refcount so we need implement it
-	if(g_enableFaceOverlays)
+	if (g_hookFaceOverlays && g_enableFaceOverlays)
 	{
+
 		RelocAddr <uintptr_t> NiAllocate_Geom_Target(0x00CB82B0 + 0x92);
 		g_branchTrampoline.Write5Call(NiAllocate_Geom_Target.GetUIntPtr(), (uintptr_t)NiAllocate_Hooked);
 
@@ -1540,7 +1541,7 @@ bool InstallSKEEHooks()
 		RelocAddr <uintptr_t> NiAllocate_Geom2_Target(0x00CB8600 + 0x76);
 		g_branchTrampoline.Write5Call(NiAllocate_Geom2_Target.GetUIntPtr(), (uintptr_t)NiAllocate_Hooked);
 
-		RelocAddr <uintptr_t> NiFree_Geom2_Target(0x00CB8700 + 0x28);
+		RelocAddr <uintptr_t> NiFree_Geom2_Target(0x00CB9010 + 0x2F);
 		g_branchTrampoline.Write5Call(NiFree_Geom2_Target.GetUIntPtr(), (uintptr_t)NiFree_Hooked);
 
 		RelocAddr<uintptr_t> UpdateHeadState_Target1(0x00373880 + 0x1E0);
@@ -1549,7 +1550,6 @@ bool InstallSKEEHooks()
 		RelocAddr<uintptr_t> UpdateHeadState_Target2(0x00372920 + 0x1DF);
 		g_branchTrampoline.Write5Call(UpdateHeadState_Target2.GetUIntPtr(), (uintptr_t)UpdateHeadState_Disabled_Hooked);
 	}
-#endif
 
 	RelocAddr <uintptr_t> RaceSexMenu_Render_Target(0x0173F2C8 + 0x30); // ??_7RaceSexMenu@@6B@
 	SafeWrite64(RaceSexMenu_Render_Target.GetUIntPtr(), (uintptr_t)RaceSexMenu_Render_Hooked);
