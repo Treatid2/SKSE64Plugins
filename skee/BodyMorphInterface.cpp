@@ -612,9 +612,10 @@ void MorphFileCache::ApplyMorphs(TESObjectREFR * refr, NiAVObject * rootNode, bo
 		std::vector<concurrency::task_handle<std::function<void()>>> task_list;
 		for (const auto & it : vertexMap)
 		{
-			task_list.push_back(concurrency::make_task<std::function<void()>>([&]()
+			const auto * bodyMorph = &it;
+			task_list.push_back(concurrency::make_task<std::function<void()>>([&, bodyMorph]()
 			{
-				ApplyMorph(refr, rootNode, isAttaching, it, &mtx, defer);
+				ApplyMorph(refr, rootNode, isAttaching, *bodyMorph, &mtx, defer);
 			}));
 		}
 		for (auto & task : task_list)
