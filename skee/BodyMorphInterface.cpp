@@ -582,17 +582,20 @@ void MorphFileCache::ApplyMorph(TESObjectREFR * refr, NiAVObject * rootNode, boo
 
 									auto updateTask = new NIOVTaskUpdateSkinPartition(skinInstance, newSkinPartition);
 									newSkinPartition->DecRef(); // DeepCopy started refcount at 1, passed ownership to the task
-
-									if (deferred)
-									{
-										g_task->AddTask(updateTask);
-									}
-									else
+									
+									if (!deferred)
 									{
 										updateTask->Run();
 										updateTask->Dispose();
 									}
 									if (mutex) mutex->unlock();
+
+									// SKSEVR processes queued tasks while holding its task-queue lock.
+									// Do not enter SKSE while holding the parallel morph mutex.
+									if (deferred)
+									{
+										g_task->AddTask(updateTask);
+									}
 								}
 							}
 						}
