@@ -1177,46 +1177,76 @@ void NIOVTaskUpdateSkinPartition::Run()
 		UInt32 vertexCount = m_partition->vertexCount;
 
 		auto deviceContext = g_renderManager->context;
+		std::vector<ID3D11Buffer *> updatedBuffers;
+		updatedBuffers.reserve(m_partition->m_uiPartitions);
 		for (UInt32 p = 0; p < m_partition->m_uiPartitions; ++p)
 		{
 			auto & pPartition = m_partition->m_pkPartitions[p];
-			auto vertexBuffer = pPartition.shapeData->m_VertexBuffer;
-			if (!vertexBuffer)
+			auto shapeData = pPartition.shapeData;
+			if (!shapeData || !shapeData->m_RawVertexData)
+			{
+				_ERROR("%s - Missing body morph vertex data for partition %u", __FUNCTION__, p);
 				continue;
+			}
+
+			auto vertexBuffer = shapeData->m_VertexBuffer;
+			if (!vertexBuffer)
+			{
+				_ERROR("%s - Missing body morph vertex buffer for partition %u", __FUNCTION__, p);
+				continue;
+			}
 
 			// Deep-copied partitions can share the same GPU resource. Submit each
-			// resource only once rather than racing duplicate updates.
-			bool alreadyUpdated = false;
-			for (UInt32 previous = 0; previous < p; ++previous)
-			{
-				if (m_partition->m_pkPartitions[previous].shapeData->m_VertexBuffer == vertexBuffer)
-				{
-					alreadyUpdated = true;
-					break;
-				}
-			}
-			if (alreadyUpdated)
+			// resource only after a successful upload. A failed earlier partition
+			// must not suppress a later valid attempt for the same resource.
+			if (std::find(updatedBuffers.begin(), updatedBuffers.end(), vertexBuffer) != updatedBuffers.end())
 				continue;
 
 			D3D11_BUFFER_DESC desc{};
 			vertexBuffer->GetDesc(&desc);
+			const UInt64 requiredDataSize = static_cast<UInt64>(vertexCount) * static_cast<UInt64>(vertexSize);
+			if (requiredDataSize == 0)
+			{
+				_ERROR("%s - Body morph vertex data is empty", __FUNCTION__);
+				continue;
+			}
+			if (requiredDataSize > desc.ByteWidth)
+			{
+				_ERROR("%s - Body morph vertex buffer is too small (%u < %llu)", __FUNCTION__, desc.ByteWidth, requiredDataSize);
+				continue;
+			}
+			const UInt32 dataSize = static_cast<UInt32>(requiredDataSize);
+			bool updated = false;
 			if (desc.Usage == D3D11_USAGE_DYNAMIC && (desc.CPUAccessFlags & D3D11_CPU_ACCESS_WRITE))
 			{
 				D3D11_MAPPED_SUBRESOURCE mapped{};
-				if (SUCCEEDED(deviceContext->Map(vertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+				HRESULT result = deviceContext->Map(vertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+				if (SUCCEEDED(result))
 				{
-					memcpy(mapped.pData, pPartition.shapeData->m_RawVertexData, vertexCount * vertexSize);
+					memcpy(mapped.pData, shapeData->m_RawVertexData, dataSize);
 					deviceContext->Unmap(vertexBuffer, 0);
+					updated = true;
+				}
+				else
+				{
+					_ERROR("%s - Failed to map body morph vertex buffer (HRESULT 0x%08X)", __FUNCTION__, static_cast<UInt32>(result));
 				}
 			}
 			else if (desc.Usage == D3D11_USAGE_DEFAULT)
 			{
-				deviceContext->UpdateSubresource(vertexBuffer, 0, nullptr, pPartition.shapeData->m_RawVertexData, vertexCount * vertexSize, 0);
+				// A null destination box copies the entire buffer. Bound the copy to
+				// the vertex payload so buffer padding cannot cause a source over-read.
+				D3D11_BOX uploadRegion{ 0, 0, 0, dataSize, 1, 1 };
+				deviceContext->UpdateSubresource(vertexBuffer, 0, &uploadRegion, shapeData->m_RawVertexData, 0, 0);
+				updated = true;
 			}
 			else
 			{
 				_ERROR("%s - Unsupported body morph vertex buffer usage %u", __FUNCTION__, desc.Usage);
 			}
+
+			if (updated)
+				updatedBuffers.push_back(vertexBuffer);
 		}
 
 		m_skinInstance->m_spSkinPartition = m_partition;
