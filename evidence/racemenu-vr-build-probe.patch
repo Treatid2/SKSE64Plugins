@@ -1,0 +1,63 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2da8f98..f7577e9 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -41,8 +41,8 @@ set(COMMONLIB_PREBUILT OFF CACHE BOOL "" FORCE)
+ set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+ 
+ set(ENABLE_SKYRIM_SE OFF CACHE BOOL "" FORCE)
+-set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
+-set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
++set(ENABLE_SKYRIM_AE OFF CACHE BOOL "" FORCE)
++set(ENABLE_SKYRIM_VR ON CACHE BOOL "" FORCE)
+ set(SKSE_SUPPORT_XBYAK ON CACHE BOOL "" FORCE)
+ set(SKSE_SUPPORT_PATCH_SAFETY ON CACHE BOOL "" FORCE)
+ 
+diff --git a/skee64/BodyMorphInterface.cpp b/skee64/BodyMorphInterface.cpp
+index 8bf8533..99d7ed3 100644
+--- a/skee64/BodyMorphInterface.cpp
++++ b/skee64/BodyMorphInterface.cpp
+@@ -1163,7 +1163,9 @@ void NIOVTaskUpdateSkinPartition::Run()
+ 	if (m_skinInstance && m_partition)
+ 	{
+ 		REX::W32::EnterCriticalSection(&RE::BSGraphics::Renderer::GetSingleton()->GetRendererData().lock);
++#if defined(EXCLUSIVE_SKYRIM_FLAT)
+ 		REX::W32::EnterCriticalSection(&m_skinInstance->lock);
++#endif
+ 		auto & partition = m_partition->partitions[0];
+ 		std::uint32_t vertexSize = partition.vertexDesc.GetSize();
+ 		std::uint32_t vertexCount = m_partition->vertexCount;
+@@ -1273,7 +1275,9 @@ void NIOVTaskUpdateSkinPartition::Run()
+ 		}
+ 
+ 		m_skinInstance->skinPartition = m_partition;
++#if defined(EXCLUSIVE_SKYRIM_FLAT)
+ 		REX::W32::LeaveCriticalSection(&m_skinInstance->lock);
++#endif
+ 		REX::W32::LeaveCriticalSection(&RE::BSGraphics::Renderer::GetSingleton()->GetRendererData().lock);
+ 	}
+ }
+diff --git a/skee64/NifUtils.cpp b/skee64/NifUtils.cpp
+index 512c5e8..5e85cd8 100644
+--- a/skee64/NifUtils.cpp
++++ b/skee64/NifUtils.cpp
+@@ -607,7 +607,9 @@ RE::NiTransform GetGeometryTransform(RE::BSGeometry * geometry)
+ 	RE::NiTransform transform = geometry->local;
+ 	RE::NiSkinInstance * dstSkin = geometry->skinInstance.get();
+ 	if (dstSkin) {
++#if defined(EXCLUSIVE_SKYRIM_FLAT)
+ 		utils::ScopedCriticalSection cs(&dstSkin->lock);
++#endif
+ 		RE::NiSkinData * skinData = dstSkin->skinData.get();
+ 		if (skinData) {
+ 			transform = transform * skinData->rootParentToSkin;
+@@ -630,7 +632,9 @@ RE::NiTransform GetLegacyGeometryTransform(RE::NiGeometry * geometry)
+ 	RE::NiTransform transform = geometry->local;
+ 	RE::NiSkinInstance * dstSkin = geometry->spSkinInstance.get();
+ 	if (dstSkin) {
++#if defined(EXCLUSIVE_SKYRIM_FLAT)
+ 		utils::ScopedCriticalSection cs(&dstSkin->lock);
++#endif
+ 		RE::NiSkinData * skinData = dstSkin->skinData.get();
+ 		if (skinData) {
+ 			transform = transform * skinData->rootParentToSkin;
