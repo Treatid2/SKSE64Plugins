@@ -2,10 +2,12 @@
 
 ## Public source release
 
-The 0.1.58 VR beta and pinned source bundle are published at
-https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.58 .
-The binary was built from commit
-`6d44b35f7a4bb17a1fb955a9378021d27657477d`, native version `0.5.0.68`.
+The 0.1.60 VR beta and pinned source bundle are available at
+https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.60 .
+Native version is `0.5.0.70`. The release uses the exact live-tested candidate
+DLL, not a later rebuild; its build receipt records the then-uncommitted height
+changes based on `cd22493`'s earlier ancestor `0b6b553`. Those native changes
+are committed in `59ab04f`; later release changes are documentation-only.
 The source bundle includes CommonLibSSE-NG and OpenVR at the pinned revisions,
 with both focused CommonLib corrections already applied. Its
 `SOURCE-RELEASE.md` gives portable build instructions: no Codex, managed
@@ -19,7 +21,7 @@ extracted source tree:
 $env:VCPKG_ROOT = 'C:/development/vcpkg'
 $env:SKEE_BUILD_ROOT = 'C:/development/racemenu-build'
 cmake --preset release-msvc-vcpkg-vr `
-  -DSKEE_VR2_PACKAGE_VERSION=0.1.58 -DSKEE_NATIVE_PLUGIN_VERSION=0.5.0.68
+  -DSKEE_VR2_PACKAGE_VERSION=0.1.60 -DSKEE_NATIVE_PLUGIN_VERSION=0.5.0.70
 cmake --build --preset release-msvc-vcpkg-vr --parallel 4
 ```
 
@@ -32,8 +34,9 @@ again to the already-patched source bundle.
 
 This is a VR beta, not complete cross-runtime qualification. The clean build
 and keyboard/camera/SWF policy tests and all 23 production shader compiler
-checks pass. The final version-only rebuild has not had a separate headset
-installation; broader Sculpt/SteamVR/SE/AE checks and independent review remain
+checks pass. The exact 0.1.60 candidate has headset acceptance for menu height
+offsets and wand alignment, including extreme settings; the warning also has
+wrong/correct-original acceptance. Broader Sculpt/SteamVR/SE/AE checks and independent review remain
 outstanding. Camera-tab visible movement is ineffective in the tested session.
 
 ## Maintainer managed build

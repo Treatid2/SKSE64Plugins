@@ -1,4 +1,4 @@
-# RaceMenu VR 2 — VR beta 0.1.58
+# RaceMenu VR 2 — VR beta 0.1.60
 
 **An add-on to Expired's RaceMenu, adapted for Skyrim VR.**
 
@@ -12,13 +12,15 @@ redistribute the original Nexus assets. Treatid2 maintains this VR fork.
   character-creation exit and save/load. No second naming prompt on exit.
 - Stable face view and a steady, player-facing menu that reanchors when you
   change between normal and face views.
-- Independently positioned colour picker; angular placement, distance and
+- Independently positioned colour picker; angular placement, height, distance and
   size in the INI. Controls and pointer coordinates stay aligned.
 - Readable footer controls, cap-aligned translucent slider tracks and reduced
   projected moire.
 - Optional PNG backgrounds that preserve their image aspect ratio, plus
   configurable background/text/accent colours and opacity.
 - Documented versioned native interfaces for other developers to extend.
+- A large on-screen installation notice if an incompatible menu overrides the
+  required original; no notice with the correct original.
 
 ## Requirements and installation
 
@@ -55,9 +57,9 @@ user artwork. This is not an official release or implied endorsement by Expired.
 Source fork: https://github.com/Treatid2/SKSE64Plugins
 
 Corresponding source:
-https://github.com/Treatid2/SKSE64Plugins/tree/racemenu-vr2-v0.1.58
+https://github.com/Treatid2/SKSE64Plugins/tree/racemenu-vr2-v0.1.60
 Versioned downloads and SHA-256 identities:
-https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.58
+https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.60
 
 Nexus Donation Points are intended for Expired. **Confirm the Nexus allocation
 with the recipient/account settings before claiming this is configured.**
@@ -67,6 +69,11 @@ with the recipient/account settings before claiming this is configured.**
 The development headset test confirmed the menu layout, image proportions,
 normal/face transitions, picker placement, Filter/Name entry and character-name
 save/load. The user found SteamVR + VR Menu Mouse Fix workable. This is not
+exhaustive coverage. In 0.1.60 the user also confirmed the wrong-SWF notice,
+absence of that notice with the correct SWF, and accurate wand alignment with
+extreme INI height offsets. Default height aligns the menu centre to captured
+player eye level; height offsets are relative to that, not absolute world heights.
+This is not
 exhaustive coverage of all headsets, controller bindings, presets/sculpt tools,
 third-party extensions or SE/AE standalone compatibility. Back up saves.
 
