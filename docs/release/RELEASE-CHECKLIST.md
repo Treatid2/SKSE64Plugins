@@ -9,6 +9,7 @@ Baseline: accepted development package 0.1.53, native 0.5.0.63.
 - [x] Native add-on packaging uses an explicit allowlist, not the private baseline.
 - [x] No original BSA/ESP/SWF/full upstream class/custom artwork in public payload.
 - [x] Separate independent CommonLib PRs submitted (#363, #364).
+- [x] Treatid2 source branch pushed; draft Expired upstream PR #66 opened.
 - [ ] Clean source checkout build matching an immutable public release tag.
 - [ ] Complete third-party licence texts for statically linked dependencies.
 - [ ] Broader SteamVR normal/face, Filter/Name, picker, close/reopen checks.

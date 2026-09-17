@@ -50,9 +50,10 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'skee64/IPluginInterface.h') -Des
 $docs = Join-Path $stage 'Data/docs/RaceMenuVR2'
 $recipe = Join-Path $docs 'AssetPatcher/tools/vr-racesex-patches'
 New-Item -ItemType Directory -Force -Path $recipe | Out-Null
-foreach ($file in @('README.md','LICENSE','THIRD_PARTY_NOTICES.md','docs/release/INSTALLATION.md','docs/release/RELEASE-CHECKLIST.md','docs/menu-customization.md','docs/menu-appearance.md')) {
+foreach ($file in @('LICENSE','THIRD_PARTY_NOTICES.md','docs/release/INSTALLATION.md','docs/release/RELEASE-CHECKLIST.md','docs/menu-customization.md','docs/menu-appearance.md')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination $docs
 }
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/release/DOWNLOAD-README.md') -Destination (Join-Path $docs 'README.md')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'patch-vr-racesex-swf.ps1') -Destination (Split-Path -Parent $recipe)
 foreach ($file in @('Appearance.as.inc','TextEntry.as.inc','InputTrace.as.inc')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "vr-racesex-patches/$file") -Destination $recipe
