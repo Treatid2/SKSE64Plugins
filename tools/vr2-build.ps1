@@ -134,7 +134,9 @@ try {
     }
     $openVrRevision = $Matches[1]
     $openVrArchive = Join-Path $workPath 'openvr-source.tar'
-    & git -C $openVrSource archive --format=tar "--output=$openVrArchive" $openVrRevision
+    # Only the Windows build inputs and licence: macOS framework symlinks
+    # cannot be extracted by Windows tar without extra OS privileges.
+    & git -C $openVrSource archive --format=tar "--output=$openVrArchive" $openVrRevision headers lib/win64 LICENSE
     if ($LASTEXITCODE -ne 0) { throw 'OpenVR source export failed; initialise recursive submodules first.' }
     $openVrStage = Join-Path $commonLibStage 'extern/openvr'
     New-Item -ItemType Directory -Force -Path $openVrStage | Out-Null
