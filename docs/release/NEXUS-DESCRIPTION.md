@@ -68,13 +68,12 @@ with the recipient/account settings before claiming this is configured.**
 
 The development headset test confirmed the menu layout, image proportions,
 normal/face transitions, picker placement, Filter/Name entry and character-name
-save/load. The user found SteamVR + VR Menu Mouse Fix workable. This is not
-exhaustive coverage. In 0.1.60 the user also confirmed the wrong-SWF notice,
+save/load. The user found SteamVR + VR Menu Mouse Fix workable. In 0.1.60
+the user also confirmed the wrong-SWF notice,
 absence of that notice with the correct SWF, and accurate wand alignment with
 extreme INI height offsets. Default height aligns the menu centre to captured
 player eye level; height offsets are relative to that, not absolute world heights.
-This is not
-exhaustive coverage of all headsets, controller bindings, presets/sculpt tools,
+This is not exhaustive coverage of all headsets, controller bindings, presets/sculpt tools,
 third-party extensions or SE/AE standalone compatibility. Back up saves.
 
 Camera-tab options react, but visible camera movement is not confirmed in VR.
