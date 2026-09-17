@@ -42,7 +42,10 @@ fAzimuth=30
 ; negative = DOWN. This is an angular position, not a vertical world-unit offset.
 fElevation=0
 ; fHeightOffset: additional vertical offset, -150..150 Skyrim world units.
-; 0 preserves existing placement; positive raises the menu, negative lowers it.
+; DEFAULT HEIGHT: with fElevation=0 and fHeightOffset=0, the MENU CENTRE is
+; on the player's captured EYE LINE. Height adjustments are relative to that
+; eye-line-to-menu-centre baseline, NOT an absolute height above the ground.
+; 0 preserves existing placement; positive raises the centre, negative lowers it.
 ; Added AFTER angular elevation: at elevation 0, 10 puts the centre 10 units
 ; above captured eye height. Distance still defines the original polar radius;
 ; this offset changes the final eye-to-centre distance. The surface tilts to
@@ -66,6 +69,8 @@ fColorPickerAzimuth=38
 fColorPickerElevation=0
 ; Independent picker height: same units/range/sign as fHeightOffset; it does
 ; not inherit the main menu's height. 0 preserves the existing picker position.
+; With fColorPickerElevation=0, default 0 puts the PICKER CENTRE on the same
+; captured player eye line; adjustments are relative to that baseline.
 fColorPickerHeightOffset=0
 fColorPickerDistance=100
 fColorPickerSurfaceScale=100
