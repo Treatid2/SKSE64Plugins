@@ -303,6 +303,12 @@ if(DEFINED ENV{Skyrim64Path})
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    add_executable(vr2_polar_placement_tests tests/menu-polar-placement.test.cpp)
+    target_compile_options(vr2_polar_placement_tests PRIVATE /UNDEBUG)
+    add_custom_command(TARGET vr2_polar_placement_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_polar_placement_tests>"
+        COMMENT "Qualifying menu height offsets and viewer-facing placement")
+    add_dependencies(skee64 vr2_polar_placement_tests)
     add_executable(vr2_camera_policy_tests tests/vr-camera-policy.cpp)
     target_include_directories(vr2_camera_policy_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
     target_link_libraries(vr2_camera_policy_tests PRIVATE CommonLibSSE xbyak::xbyak)

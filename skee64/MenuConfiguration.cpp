@@ -11,6 +11,7 @@ namespace SKEE::MenuConfiguration
     namespace
     {
         ReadOption readOption{};
+        float menuHeight{}, pickerHeight{};
         constexpr std::array<const char*, 3> profileNames{ "Flat", "VR Normal", "VR Face" };
         struct Field { const char* key; const char* member; double minimum, maximum; };
         constexpr Field fields[]{
@@ -78,7 +79,18 @@ namespace SKEE::MenuConfiguration
             }
         };
     }
-    void Configure(ReadOption read) { readOption = read; }
+    void Configure(ReadOption read)
+    {
+        readOption = read;
+        auto height = [](const char* key) {
+            if (!readOption) return 0.F;
+            const auto value = Number(Option("VR Normal", key), -150, 150);
+            return value == -9999 ? 0.F : static_cast<float>(value);
+        };
+        menuHeight = height("fHeightOffset");
+        pickerHeight = height("fColorPickerHeightOffset");
+    }
+    float PlacementHeight(bool colorPicker) { return colorPicker ? pickerHeight : menuHeight; }
     void Register(RE::GFxMovie* movie, RE::GFxValue* root)
     {
         if (!readOption) return;

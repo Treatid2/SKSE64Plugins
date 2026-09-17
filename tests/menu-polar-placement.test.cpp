@@ -18,5 +18,19 @@ int main()
         // Radius changes magnitude, not angles; uniform scaling preserves aspect.
         assert(Near(Dot(f.radial,f.right)*100,0));
     }
+    for(float elevation:{-60.F,0.F,60.F}) for(float distance:{30.F,100.F,300.F}) for(float height:{-150.F,-10.F,0.F,10.F,150.F}) {
+        const auto original=SKEE::VR::MakePolarFrame(0,1,30,elevation);
+        const auto p=SKEE::VR::MakeRaisedPolarPlacement(0,1,30,elevation,distance,height);
+        assert(Near(p.offset[0],original.radial[0]*distance));
+        assert(Near(p.offset[1],original.radial[1]*distance));
+        assert(Near(p.offset[2],original.radial[2]*distance+height));
+        auto direction=p.offset;
+        const auto length=std::sqrt(Dot(direction,direction));
+        for(auto& c:direction) c/=length;
+        assert(Near(Dot(direction,p.frame.radial),1));
+        assert(Near(Dot(direction,p.frame.right),0));
+        assert(Near(Dot(direction,p.frame.up),0));
+        if(height==0) { assert(p.frame.radial==original.radial); assert(p.frame.up==original.up); }
+    }
     std::puts("Polar placement: positive-left convention and level/raised orthonormal viewer-facing frames passed.");
 }

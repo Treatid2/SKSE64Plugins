@@ -41,6 +41,14 @@ fAzimuth=30
 ; fElevation: degrees, -60..60. 0 = captured viewer/eye height; positive = UP,
 ; negative = DOWN. This is an angular position, not a vertical world-unit offset.
 fElevation=0
+; fHeightOffset: additional vertical offset, -150..150 Skyrim world units.
+; 0 preserves existing placement; positive raises the menu, negative lowers it.
+; Added AFTER angular elevation: at elevation 0, 10 puts the centre 10 units
+; above captured eye height. Distance still defines the original polar radius;
+; this offset changes the final eye-to-centre distance. The surface tilts to
+; face the captured viewer, and wand hit geometry moves with it. Not pixels.
+; Shared between Normal and Face views; restart Skyrim after changing it.
+fHeightOffset=0
 ; fDistance: radius from the captured viewer to the menu centre, 30..300 Skyrim
 ; world units. Larger = farther/smaller-looking; smaller = nearer/larger-looking.
 ; Radius is not simply forward depth: at nonzero angles it also determines the
@@ -56,12 +64,15 @@ fSurfaceScale=100
 ; 38 puts it farther left than the main menu's 30-degree setting.
 fColorPickerAzimuth=38
 fColorPickerElevation=0
+; Independent picker height: same units/range/sign as fHeightOffset; it does
+; not inherit the main menu's height. 0 preserves the existing picker position.
+fColorPickerHeightOffset=0
 fColorPickerDistance=100
 fColorPickerSurfaceScale=100
 
 [Menu Profile VR Face]
 ; World placement is shared with VR Normal; no separate face placement keys.
-; Main and picker polar keys belong in VR Normal. Old copies of those eight keys
+; Main and picker polar/height keys belong in VR Normal. Old placement keys
 ; under VR Face are ignored. The menu reanchors once when switching views, using
 ; the SAME relative placement; it does not follow the headset continuously.
 bConsolidatePanel=1

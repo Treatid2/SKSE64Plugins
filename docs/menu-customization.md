@@ -43,6 +43,13 @@ not every 500 ms or on physical headset movement. Opening/closing the picker
 switches the modal/main transform around that same fixed viewer anchor.
 Old face-profile placement keys may remain in preserved INIs, but are ignored;
 face styling and camera-distance/eye-height overrides remain supported.
+`fHeightOffset` and `fColorPickerHeightOffset` in VR Normal add independent
+vertical offsets after polar positioning (-150..150 Skyrim world units,
+positive up). Both default to zero, including in preserved older INIs.
+Empty values inherit Menu Appearance; invalid/out-of-range values use zero.
+The main height does not implicitly offset the picker. The resulting surface
+still faces the captured viewer and moves its wand interaction geometry with
+it. These settings are shared with Face view and require a game restart.
 Category selection and dynamically wrapped action buttons do not reanchor the
 surface. In 0.1.53 the stock double-rule decoration is removed from the VR
 movie (a named directly placed shape could not be moved as an AS2 MovieClip).
