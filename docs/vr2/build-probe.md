@@ -22,8 +22,14 @@ because the custom hook relocations have not been qualified for Skyrim VR.
 
 - RaceMenu source:
   `7ceab706e0f4fdd1816f8c61390ff33ecdeda1f8`
-- CommonLibSSE-NG: `v7.4.0`,
+- CommonLibSSE-NG: `v8.0.1`,
   `9b17b42fc9db23aea2b60f92690e778784e612b1`
+
+The dependency recheck confirmed CommonLibSSE-NG `v8.0.1` is
+still the newest release (the `ng` head is one documentation-only commit
+later). Skyrim VR Address Library advanced to `v0.264.0`, commit
+`710f98387257885c963d749096a26879cface89c`. That update does not qualify any
+RaceMenu hook by itself.
 
 The branch originally pinned CommonLibSSE-NG `v7.2.0`, commit
 `7a60f4de794095d7b0f8928d1b930a52e9a7da83`.
@@ -35,7 +41,7 @@ The branch originally pinned CommonLibSSE-NG `v7.2.0`, commit
    when building VR.
 3. Correct a CommonLib `NativeLatentFunction` template expression from
    `GetRawType<latentR>()` to `GetRawType<latentR>{}()`.
-4. Update the CommonLibSSE-NG submodule to `v7.4.0`.
+4. Update the CommonLibSSE-NG submodule to `v8.0.1`.
 
 The CMake switch in the evidence patch is deliberately a probe, not the final
 design. The implementation should add AE/VR presets or options rather than

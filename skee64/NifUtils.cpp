@@ -539,8 +539,9 @@ void SKSETaskExportHead::Run()
 
 	{
 		NifStreamWrapper niStream;
-		SKEE::NiStreamAddObject(niStream.get(), rootNode.get());
-		niStream->Save3(m_nifPath.c_str());
+		if (niStream.AddObject(rootNode.get())) {
+			niStream.SaveStream(m_nifPath.c_str());
+		}
 	}
 
 	if (animationData) {
@@ -607,7 +608,9 @@ RE::NiTransform GetGeometryTransform(RE::BSGeometry * geometry)
 	RE::NiTransform transform = geometry->local;
 	RE::NiSkinInstance * dstSkin = geometry->skinInstance.get();
 	if (dstSkin) {
+#if defined(EXCLUSIVE_SKYRIM_FLAT)
 		utils::ScopedCriticalSection cs(&dstSkin->lock);
+#endif
 		RE::NiSkinData * skinData = dstSkin->skinData.get();
 		if (skinData) {
 			transform = transform * skinData->rootParentToSkin;
@@ -630,7 +633,9 @@ RE::NiTransform GetLegacyGeometryTransform(RE::NiGeometry * geometry)
 	RE::NiTransform transform = geometry->local;
 	RE::NiSkinInstance * dstSkin = geometry->spSkinInstance.get();
 	if (dstSkin) {
+#if defined(EXCLUSIVE_SKYRIM_FLAT)
 		utils::ScopedCriticalSection cs(&dstSkin->lock);
+#endif
 		RE::NiSkinData * skinData = dstSkin->skinData.get();
 		if (skinData) {
 			transform = transform * skinData->rootParentToSkin;
@@ -1127,22 +1132,43 @@ void NiStringsExtraDataHelper::Replace(RE::NiStringsExtraData* _this, std::vecto
 NifStreamWrapper::NifStreamWrapper()
 {
 	std::memset(mem, 0, sizeof(mem));
-	SKEE::NiStreamCtor(reinterpret_cast<RE::NiStream*>(mem));
+	initialized = SKEE::NiStreamCtor(raw()) == raw();
 }
 
 NifStreamWrapper::~NifStreamWrapper()
 {
-	SKEE::NiStreamDtor(reinterpret_cast<RE::NiStream*>(mem));
+	if (initialized) {
+		SKEE::NiStreamDtor(raw());
+		initialized = false;
+	}
 }
 
 bool NifStreamWrapper::LoadStream(RE::NiBinaryStream* stream)
 {
-	return reinterpret_cast<RE::NiStream*>(mem)->Load1(stream);
+	return initialized && stream && raw()->Load1(stream);
+}
+
+bool NifStreamWrapper::AddObject(RE::NiObject* object)
+{
+	if (!initialized || !object) {
+		return false;
+	}
+
+	return SKEE::NiStreamAddObject(raw(), object);
+}
+
+bool NifStreamWrapper::SaveStream(const char* path)
+{
+	return initialized && path && raw()->Save3(path);
 }
 
 bool NifStreamWrapper::VisitObjects(std::function<bool(RE::NiObject*)> functor)
 {
-	auto* stream = reinterpret_cast<RE::NiStream*>(mem);
+	if (!initialized || !functor) {
+		return false;
+	}
+
+	auto* stream = raw();
 	for (std::uint32_t i = 0; i < stream->topObjects.size(); ++i)
 	{
 		if (stream->topObjects[i].get() && functor(stream->topObjects[i].get()))

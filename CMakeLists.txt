@@ -40,9 +40,45 @@ add_link_options($<$<CONFIG:Release>:/MAP>)
 set(COMMONLIB_PREBUILT OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
-set(ENABLE_SKYRIM_SE OFF CACHE BOOL "" FORCE)
-set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
-set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
+set(SKEE_GAME_RUNTIME "AE" CACHE STRING "Skyrim runtime to target (AE or VR)")
+set_property(CACHE SKEE_GAME_RUNTIME PROPERTY STRINGS AE VR)
+string(TOUPPER "${SKEE_GAME_RUNTIME}" SKEE_GAME_RUNTIME)
+
+# These identities are deliberately independent of the source repository's
+# project version. The native version is exposed through both the SKSE plugin
+# declaration and the DLL VERSIONINFO resource; the package version identifies
+# the complete VR baseline assembled by tools/vr2-build.ps1.
+set(SKEE_VR2_PACKAGE_VERSION "development" CACHE STRING "RaceMenu NG VR 2 baseline package version")
+set(SKEE_NATIVE_PLUGIN_VERSION "0.5.0.14" CACHE STRING "Native skee64 plugin version")
+if(NOT SKEE_NATIVE_PLUGIN_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+    message(FATAL_ERROR "SKEE_NATIVE_PLUGIN_VERSION must contain four numeric components")
+endif()
+set(SKEE_NATIVE_VERSION_MAJOR "${CMAKE_MATCH_1}")
+set(SKEE_NATIVE_VERSION_MINOR "${CMAKE_MATCH_2}")
+set(SKEE_NATIVE_VERSION_PATCH "${CMAKE_MATCH_3}")
+set(SKEE_NATIVE_VERSION_TWEAK "${CMAKE_MATCH_4}")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/skee64/BuildVersion.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.h"
+    @ONLY
+)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/skee64/BuildVersion.rc.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.rc"
+    @ONLY
+)
+
+if(SKEE_GAME_RUNTIME STREQUAL "AE")
+    set(ENABLE_SKYRIM_SE OFF CACHE BOOL "" FORCE)
+    set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
+    set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
+elseif(SKEE_GAME_RUNTIME STREQUAL "VR")
+    set(ENABLE_SKYRIM_SE OFF CACHE BOOL "" FORCE)
+    set(ENABLE_SKYRIM_AE OFF CACHE BOOL "" FORCE)
+    set(ENABLE_SKYRIM_VR ON CACHE BOOL "" FORCE)
+else()
+    message(FATAL_ERROR "Unsupported SKEE_GAME_RUNTIME='${SKEE_GAME_RUNTIME}'; expected AE or VR")
+endif()
 set(SKSE_SUPPORT_XBYAK ON CACHE BOOL "" FORCE)
 set(SKSE_SUPPORT_PATCH_SAFETY ON CACHE BOOL "" FORCE)
 
@@ -57,9 +93,15 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(directxmath CONFIG REQUIRED)
 
-add_subdirectory(CommonLibSSE-NG EXCLUDE_FROM_ALL)
+set(SKEE_COMMONLIB_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/CommonLibSSE-NG" CACHE PATH
+    "CommonLibSSE-NG source directory")
+if(NOT EXISTS "${SKEE_COMMONLIB_SOURCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "CommonLibSSE-NG source not found at '${SKEE_COMMONLIB_SOURCE_DIR}'")
+endif()
+
+add_subdirectory("${SKEE_COMMONLIB_SOURCE_DIR}" CommonLibSSE-NG EXCLUDE_FROM_ALL)
 # CommonLib's source-build path does not include this consumer helper itself.
-include("${CMAKE_CURRENT_SOURCE_DIR}/CommonLibSSE-NG/cmake/CommonLibSSE.cmake")
+include("${SKEE_COMMONLIB_SOURCE_DIR}/cmake/CommonLibSSE.cmake")
 # SKSE_SUPPORT_XBYAK is public API in CommonLib's trampoline header and SKEEHooks uses it too.
 target_link_libraries(CommonLibSSE PUBLIC xbyak::xbyak)
 
@@ -70,6 +112,7 @@ set(SKEE_SOURCES
     skee64/ActorUpdateManager.cpp
     skee64/AttachmentInterface.cpp
     skee64/BodyMorphInterface.cpp
+    skee64/CharacterCreationInterface.cpp
     skee64/CommandInterface.cpp
     skee64/FaceMorphInterface.cpp
     skee64/FileUtils.cpp
@@ -87,6 +130,12 @@ set(SKEE_SOURCES
     skee64/PartHandler.cpp
     skee64/PluginInterface.cpp
     skee64/PresetInterface.cpp
+	skee64/RaceSexMenuVRInput.cpp
+	skee64/RaceSexMenuVRKeyboard.cpp
+	skee64/MenuAppearance.cpp
+	skee64/MenuConfiguration.cpp
+	skee64/MenuExtensions.cpp
+	skee64/RaceSexMenuFaceView.cpp
     skee64/ScaleformCharGenFunctions.cpp
     skee64/ScaleformFunctions.cpp
     skee64/ScaleformUtils.cpp
@@ -124,19 +173,24 @@ set(SKEE_SOURCES
     skee64/CDXStroke.cpp
     skee64/CDXTextureRenderer.cpp
     skee64/CDXUndo.cpp
-    skee64/Resource.rc
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.rc"
 )
 
 add_commonlibsse_plugin(skee64
     NAME "skee"
     AUTHOR "Expired6978"
     EMAIL "expired6978@gmail.com"
-    VERSION 0.5.0.0
+    VERSION ${SKEE_NATIVE_PLUGIN_VERSION}
     USE_ADDRESS_LIBRARY
     SOURCES ${SKEE_SOURCES}
 )
-target_include_directories(skee64 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+target_include_directories(skee64 PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/skee64"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated"
+)
 target_compile_definitions(skee64 PRIVATE
+    SKEE_COMMONLIB_VERSION="8.0.1"
+    SKEE_VR_ADDRESS_LIBRARY_VERSION="0.264.0"
     XBYAK_NO_OP_NAMES
 )
 target_compile_options(skee64 PRIVATE /permissive- /bigobj)
@@ -154,6 +208,8 @@ target_link_libraries(skee64 PRIVATE
     nlohmann_json::nlohmann_json
     JsonCpp::JsonCpp
     shlwapi.lib
+    ole32.lib
+    windowscodecs.lib
 )
 set_target_properties(skee64 PROPERTIES OUTPUT_NAME "skee64")
 target_link_options(skee64 PRIVATE /FORCE:UNRESOLVED)
@@ -241,7 +297,25 @@ if(DEFINED ENV{Skyrim64Path})
     set(CMAKE_INSTALL_PREFIX "$ENV{Skyrim64Path}" CACHE PATH "Install prefix" FORCE)
 endif()
 
+if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    # Pure native policy tests run as part of a VR build; never ship/install them.
+    add_executable(vr2_keyboard_policy_tests tests/vr-keyboard-policy.cpp)
+    target_include_directories(vr2_keyboard_policy_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_keyboard_policy_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_keyboard_policy_tests>"
+        COMMENT "Checking native VR keyboard UTF-8 policy")
+    add_dependencies(skee64 vr2_keyboard_policy_tests)
+endif()
+
 install(TARGETS skee64 RUNTIME DESTINATION "Data/SKSE/Plugins")
+
+# Keep the experimental web UI consumer in a separate DLL.  It observes the
+# stock RaceSexMenu through CommonLib and talks to an installed PrismaUI runtime
+# through the public consumer ABI; it neither links to nor bundles PrismaUI.
+option(SKEE_BUILD_PRISMA_BRIDGE "Build the private experimental Prisma consumer" OFF)
+if(SKEE_BUILD_PRISMA_BRIDGE)
+    add_subdirectory(racemenu-prisma-bridge)
+endif()
 
 # Install each shader module's sources and compiled .cso into the game plugin
 # dir, mirroring the --install layout in build.ps1/build.sh:

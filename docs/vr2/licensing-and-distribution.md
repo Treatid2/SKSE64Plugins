@@ -1,33 +1,46 @@
 # Licensing and distribution boundary
 
-## Approved provenance
+## Approved provenance and implementation boundary
 
-The project is based exclusively on Expired's
-`expired6978/SKSE64Plugins` branch `CommonLibSSE-NG`. Its repository root
-contains an explicit GPL-3.0 license. The owner introduced that license in
-commit `c7237ada0ee5b4ad344790f579e35aed4103b06f`; the hand-off checkout begins at
-`7ceab706e0f4fdd1816f8c61390ff33ecdeda1f8`.
+The implementation base is Expired's RaceMenu NG source in
+`expired6978/SKSE64Plugins`, branch `CommonLibSSE-NG`. That GitHub branch has an
+explicit GPL-3.0 license. The older Nexus distribution comes from a different
+historical branch whose licensing is not explicit; it is not the source basis
+for this implementation.
 
 `THIRD_PARTY_NOTICES.md` identifies `skee64` as GPL-3.0-or-later and records the
 statically linked CommonLib dependency. Preserve and update those notices as
 dependencies change.
 
-The absence of an explicit root license on other historical branches is not a
-reason to infer permission from them. Do not copy from the historical `VR`
-branch or from Nightfallstorm's RaceMenuVR adaptation.
+CommonLibSSE-NG, the Skyrim VR Address Library, and SKSEVR may be used for their
+published contracts, mappings, and permissively available implementation where
+applicable. SKEEVR/RaceMenuVR is a separate work and is not a source-code or
+binary dependency: do not copy its code. Equivalent VR functionality must be
+implemented locally from the GPL-3 RaceMenu NG base and independently qualified
+Skyrim VR interfaces and executable evidence.
 
 ## Product relationship
 
-The user-facing VR package is an add-on to RaceMenu NG, not a repackaging of the
-complete mod. RaceMenu NG remains a prerequisite so its author retains the
-download and users receive the original assets through the original channel.
+The user-facing VR package is an add-on, not a repackaging of the complete mod.
+The GPL source is the NG branch. The tested **asset prerequisite** is the separate
+RaceMenu SE 0.4.20.0 Nexus download (19080), not the Skyrim LE download (29624).
+This does not assert that the original Nexus assets are GPL. Users receive
+them through Expired's original channel.
 The compatibility package should contain only project-built VR binaries,
 project-owned configuration or documentation, and legally redistributable
 notices.
 
-The mod manager should load the compatibility package after RaceMenu NG so its
+The mod manager should load the compatibility package after original RaceMenu so its
 VR DLL replaces the incompatible runtime DLL. Document this override clearly;
 do not silently bundle the upstream asset tree.
+
+Do not publish the complete modified menu or decompiled upstream classes.
+Distribute our source-pinned transformation recipe instead: it regenerates the
+user's private movie locally. The native-only download is not functional without
+this step. The recipe reproduces the accepted development movie exactly.
+Disable different-filename legacy DLLs; do not use dummy files to mask them.
+SteamVR uses separately installed VR Menu Mouse Fix as an explicit dependency;
+its code/DLL is not bundled or relicensed. OCU supplies its tested pointer path.
 
 ## GPL source delivery
 

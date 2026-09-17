@@ -116,7 +116,7 @@ private:
 	CDXVectorMap	m_current;
 };
 
-class CRGNTaskUpdateModel : public SKSE::detail::TaskDelegate
+class CRGNTaskUpdateModel : public SKEETaskDelegate
 {
 public:
 	CRGNTaskUpdateModel(RE::BSTriShape * geometry);
@@ -128,7 +128,7 @@ private:
 	RE::NiPointer<RE::BSTriShape> m_geometry;
 };
 
-class CRGNUITaskAddStroke : public SKSE::detail::UIDelegate_v1
+class CRGNUITaskAddStroke : public SKEETaskDelegate
 {
 public:
 	CRGNUITaskAddStroke(CDXStroke * stroke, RE::BSTriShape * geometry, std::int32_t i);
@@ -142,7 +142,7 @@ private:
 	RE::NiPointer<RE::BSTriShape> m_geometry;
 };
 
-class CRGNUITaskStandardCommand : public SKSE::detail::UIDelegate_v1
+class CRGNUITaskStandardCommand : public SKEETaskDelegate
 {
 public:
 	CRGNUITaskStandardCommand(CDXUndoCommand * cmd, RE::BSTriShape * geometry, std::int32_t i);

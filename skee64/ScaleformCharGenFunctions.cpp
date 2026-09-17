@@ -6,6 +6,7 @@
 
 
 #include "ScaleformCharGenFunctions.h"
+#include "CharacterNameUpdate.h"
 #include "ScaleformUtils.h"
 
 #include "FaceMorphInterface.h"
@@ -78,6 +79,23 @@ extern std::int32_t						g_viewWidth;
 extern std::int32_t						g_viewHeight;
 extern bool							g_enableHeadExport;
 
+void SKSEScaleform_SetCharacterName::Call(RE::GFxFunctionHandler::Params& a_params)
+{
+	bool changed = false;
+	if (a_params.argCount >= 1 &&
+		a_params.args[0].GetType() == RE::GFxValue::ValueType::kString) {
+		const auto* name = a_params.args[0].GetString();
+		auto* ui = RE::UI::GetSingleton();
+		auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+		if (menu && menu->uiMovie.get() == a_params.movie) {
+			changed = SKEE::UpdateCharacterNameWithoutFinishing(name);
+		}
+	}
+	if (a_params.retVal) {
+		a_params.retVal->SetBoolean(changed);
+	}
+}
+
 extern float	g_sculptOffsetX;
 extern float	g_sculptOffsetY;
 extern float	g_sculptOffsetZ;
@@ -100,7 +118,6 @@ void SKSEScaleform_SavePreset::Call(RE::GFxFunctionHandler::Params& a_params)
 void SKSEScaleform_LoadPreset::Call(RE::GFxFunctionHandler::Params& a_params)
 {
 	using namespace ScaleformUtils;
-
 	assert(a_params.argCount >= 1);
 	assert(a_params.args[0].GetType() == RE::GFxValue::ValueType::kString);
 	assert(a_params.args[1].GetType() == RE::GFxValue::ValueType::kObject);
@@ -334,22 +351,13 @@ std::pair<RE::RaceSexMenu*, RE::RaceMenuSlider*> GetRaceMenuSlider(std::uint32_t
 		auto raceMenu = mm->GetMenu<RE::RaceSexMenu>();
 		if (raceMenu)
 		{
-			RE::RaceMenuSlider* slider = NULL;
-			RE::RaceComponent* raceData = NULL;
-
 			std::uint8_t gender = 0;
 			RE::PlayerCharacter* player = RE::PlayerCharacter::GetSingleton();
 			RE::TESNPC* actorBase = player->GetBaseObject() ? player->GetBaseObject()->As<RE::TESNPC>() : nullptr;
 			if (actorBase)
 				gender = actorBase->GetSex();
 
-			auto& menuData = raceMenu->GetRuntimeData();
-			if (menuData.unk188 < menuData.sliderData[gender].size())
-				raceData = &menuData.sliderData[gender][menuData.unk188];
-			if (raceData && sliderId < raceData->sliders.size())
-				slider = &raceData->sliders[sliderId];
-
-			if (raceData && slider)
+			if (auto* slider = skee::GetActiveRaceMenuSlider(raceMenu.get(), gender, sliderId))
 			{
 				return {raceMenu.get(), slider};
 			}
@@ -472,11 +480,14 @@ void SKSEScaleform_GetSliderPartData::Call(RE::GFxFunctionHandler::Params& a_par
 				{
 					createFilterTags(a_params.movie, &tagArray, slider->index);
 
-					auto& headPartList = raceMenu->GetRuntimeData().headParts[slider->index];
+					auto* headPartList = skee::GetRaceMenuHeadPartList(raceMenu, slider->index);
+					if (!headPartList) {
+						break;
+					}
 					RE::BGSHeadPart * headPart = NULL;
-					for (int32_t i = 0; i < (int32_t)headPartList.size(); ++i)
+					for (int32_t i = 0; i < (int32_t)headPartList->size(); ++i)
 					{
-						headPart = headPartList[i];
+						headPart = (*headPartList)[i];
 						if (headPart)
 						{
 							addHeadPart(a_params.movie, &partArray, headPart, i);
@@ -564,13 +575,16 @@ void SKSEScaleform_GetSliderData::Call(RE::GFxFunctionHandler::Params& a_params)
 			{
 				if(slider->index < skee::kNumHeadPartLists)
 				{
-					auto& headPartList = raceMenu->GetRuntimeData().headParts[slider->index];
-					RE::BGSHeadPart * headPart = (value < headPartList.size()) ? headPartList[(std::uint32_t)value] : NULL;
+					auto* headPartList = skee::GetRaceMenuHeadPartList(raceMenu, slider->index);
+					if (!headPartList) {
+						break;
+					}
+					RE::BGSHeadPart * headPart = (value < headPartList->size()) ? (*headPartList)[(std::uint32_t)value] : NULL;
 					if(headPart) {
 						RegisterNumber(a_params.retVal, "formId", headPart->formID);
 						RegisterString(a_params.retVal, a_params.movie, "partName", headPart->formEditorID.c_str());
 					}
-					RegisterNumber(a_params.retVal, "parts", static_cast<double>(headPartList.size()));
+					RegisterNumber(a_params.retVal, "parts", static_cast<double>(headPartList->size()));
 				}
 			}
 			break;
@@ -666,13 +680,12 @@ void SKSEScaleform_ImportHead::Call(RE::GFxFunctionHandler::Params& a_params)
 		return;
 
 	NifStreamWrapper niStreamScope;
-	RE::NiStream * niStream = niStreamScope.get();
 
 	RE::NiNode * rootNode = NULL;
 	RE::BSResourceNiBinaryStream binaryStream(strData);
-	if (binaryStream.good())
-	{		
-		niStream->Load1(&binaryStream);
+	if (binaryStream.good() && niStreamScope.LoadStream(&binaryStream))
+	{
+		RE::NiStream* niStream = niStreamScope.get();
 		if (niStream->topObjects.size() > 0)
 		{
 			if (niStream->topObjects[0].get()) // Get the root node

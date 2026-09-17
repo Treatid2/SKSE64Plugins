@@ -18,6 +18,7 @@ import tempfile
 import argparse
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -45,8 +46,15 @@ MANIFEST_URLS = {
 
 ssl_context = None
 
+def normalize_url(url):
+  # Visual Studio channel manifests occasionally publish payload paths with
+  # literal spaces. urllib rejects those before issuing a request, so encode
+  # only characters that are not legal URL/reserved characters while
+  # preserving existing percent escapes and query separators.
+  return urllib.parse.quote(url, safe=":/?#[]@!$&'()*+,;=%")
+
 def download(url):
-  with urllib.request.urlopen(url, context=ssl_context) as res:
+  with urllib.request.urlopen(normalize_url(url), context=ssl_context) as res:
     return res.read()
 
 total_download = 0
@@ -62,7 +70,7 @@ def download_progress(url, check, filename):
   global total_download
   with fpath.open("wb") as f:
     data = io.BytesIO()
-    with urllib.request.urlopen(url, context=ssl_context) as res:
+    with urllib.request.urlopen(normalize_url(url), context=ssl_context) as res:
       total = int(res.headers["Content-Length"])
       size = 0
       while True:

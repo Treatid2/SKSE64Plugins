@@ -1,0 +1,43 @@
+diff --git a/include/RE/R/RaceSexMenu.h b/include/RE/R/RaceSexMenu.h
+--- a/include/RE/R/RaceSexMenu.h
++++ b/include/RE/R/RaceSexMenu.h
+@@ -48,6 +48,31 @@ namespace RE
+ 		};
+ 		static_assert(sizeof(RUNTIME_DATA) == 0x168);
+ 
++		// Skyrim VR omits RaceSexCamera from the RaceSexMenu instance.  The
++		// head-part arrays still begin at +0x50, so every field after them is
++		// 0x58 bytes earlier than the flat runtime layout.
++		struct VR_RUNTIME_DATA
++		{
++			BSTArray<BGSHeadPart*>           headParts[7];  // 050
++			BSTArray<RaceComponent>          sliderData[2]; // 0F8
++			BSTArray<void*>                  unk170;        // 128
++			std::uint64_t                    unk188;        // 140
++			std::uint32_t                    unk190;        // 148
++			std::uint32_t                    unk194;        // 14C
++			REX::EnumSet<SEX, std::uint32_t> sex;           // 150
++			std::uint16_t                    unk19C;        // 154
++			std::uint8_t                     unk19E;        // 156
++			std::uint8_t                     pad19F;        // 157
++			std::uint8_t                     unk1A0;        // 158
++			std::uint8_t                     unk1A1;        // 159
++			std::uint16_t                    unk1A2;        // 15A
++			std::uint32_t                    unk1A4;        // 15C
++		};
++		static_assert(sizeof(VR_RUNTIME_DATA) == 0x110);
++		static_assert(offsetof(VR_RUNTIME_DATA, sliderData) == 0xA8);
++		static_assert(offsetof(VR_RUNTIME_DATA, unk188) == 0xF0);
++		static_assert(offsetof(VR_RUNTIME_DATA, sex) == 0x100);
++
+ 		~RaceSexMenu() override;  // 00
+ 
+ 		// override (IMenu)
+@@ -71,6 +96,7 @@ namespace RE
+ #endif
+ 
+ 		RUNTIME_DATA_ACCESSOR(RUNTIME_DATA, 0x40, 0x50);
++		VR_RUNTIME_DATA_ACCESSOR(VR_RUNTIME_DATA, GetVRRuntimeData, 0x50);
+ 		void ChangeName(const char* a_name);
+ 
+ 		// members

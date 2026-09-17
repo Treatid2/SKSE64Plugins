@@ -9,7 +9,7 @@ obligations of the GPL-3.0-or-later static link against CommonLibSSE-NG.
 
 | Component | Location | License | Notes |
 | --- | --- | --- | --- |
-| CommonLibSSE-NG (pinned revision `2fcadbdf5`, project version 6.6.3) | `CommonLibSSE-NG/` | GPL-3.0-or-later with listed exceptions (see `CommonLibSSE-NG/COPYING` and `CommonLibSSE-NG/EXCEPTIONS.md`) | Built from source as a subdirectory; statically linked. Its README states that plugins which statically link it must themselves be GPL-3.0-or-later or GPL-compatible — skee64 is released under GPL-3.0-or-later accordingly. |
+| CommonLibSSE-NG (pinned revision `d13d10a0`, project version 8.0.1) | `CommonLibSSE-NG/` | GPL-3.0-or-later with listed exceptions (see `CommonLibSSE-NG/COPYING` and `CommonLibSSE-NG/EXCEPTIONS.md`) | Built from source as a subdirectory; statically linked. Its README states that plugins which statically link it must themselves be GPL-3.0-or-later or GPL-compatible — skee64 is released under GPL-3.0-or-later accordingly. |
 | tinyxml2 | `skee64/tinyxml2.{h,cpp}` | Zlib License | Redistributed source for preset/XML parsing; see `skee64/tinyxml2.h` header notice. |
 
 ## Supplied by the vcpkg manifest (`vcpkg.json`, pinned baseline)
@@ -46,11 +46,23 @@ is provided by the components above:
 
 Deployed builds require, in addition to the game:
 
-- A matching SKSE for Skyrim SE/AE loader version that supports the Address
+- A matching SKSE for the selected Skyrim AE or VR runtime that supports the Address
   Library metadata declared by this plugin.
-- The **Address Library for SKSE Plugins** installed and up to date; every
-  relocated hook resolves through it at load and fail-closes per feature when a
-  mapping is missing.
+- The matching **Address Library for SKSE Plugins** or **Skyrim VR Address
+  Library** installed and up to date. RaceMenu VR 2 enables only relocations
+  whose runtime mapping and instruction window are independently qualified.
 
 See `BUILDING.md` / release documentation for build prerequisites (Windows,
 MSVC, CMake ≥ 3.21, Ninja, vcpkg at the pinned baseline).
+## RaceMenu Prisma Bridge consumer declaration
+
+The separate `RaceMenuPrismaBridge.dll` target contains a consumer-only
+declaration of the PrismaUI V1 binary interface. Its interface shape was
+verified against `PrismaUI_API.h` from Prisma UI Add Item Menu, copyright
+Wondernuttz and distributed under the MIT License. The header itself states
+that modders may copy it into their projects to use the API.
+
+The bridge does not contain, link, or distribute the PrismaUI framework,
+Ultralight runtime, or PrismaUI visual assets. Use and distribution of the
+bridge with PrismaUI remain pending explicit permission from the PrismaUI
+author and are not authorized by this notice.
