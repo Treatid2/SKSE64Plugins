@@ -125,6 +125,25 @@ try {
     & tar.exe -xf $commonLibArchive -C $commonLibStage
     if ($LASTEXITCODE -ne 0) { throw 'CommonLib pinned source extraction failed.' }
 
+    # git archive does not recurse into gitlinks. Export OpenVR from the exact
+    # revision recorded by CommonLib, rather than copying a possibly dirty tree.
+    $openVrSource = Join-Path $commonLibSource 'extern/openvr'
+    $openVrTree = & git -C $commonLibSource ls-tree HEAD extern/openvr
+    if ($LASTEXITCODE -ne 0 -or $openVrTree -notmatch '^160000 commit ([0-9a-f]{40})\s+extern/openvr$') {
+        throw 'Cannot resolve the pinned CommonLib OpenVR revision.'
+    }
+    $openVrRevision = $Matches[1]
+    $openVrArchive = Join-Path $workPath 'openvr-source.tar'
+    & git -C $openVrSource archive --format=tar "--output=$openVrArchive" $openVrRevision
+    if ($LASTEXITCODE -ne 0) { throw 'OpenVR source export failed; initialise recursive submodules first.' }
+    $openVrStage = Join-Path $commonLibStage 'extern/openvr'
+    New-Item -ItemType Directory -Force -Path $openVrStage | Out-Null
+    & tar.exe -xf $openVrArchive -C $openVrStage
+    if ($LASTEXITCODE -ne 0) { throw 'OpenVR pinned source extraction failed.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $openVrStage 'lib/win64/openvr_api.lib') -PathType Leaf)) {
+        throw 'Pinned OpenVR export is missing its Windows import library.'
+    }
+
     $stagedGitPointer = Join-Path $commonLibStage '.git'
     if (Test-Path -LiteralPath $stagedGitPointer -PathType Leaf) {
         Remove-Item -LiteralPath $stagedGitPointer -Force

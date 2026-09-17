@@ -9,7 +9,8 @@ obligations of the GPL-3.0-or-later static link against CommonLibSSE-NG.
 
 | Component | Location | License | Notes |
 | --- | --- | --- | --- |
-| CommonLibSSE-NG (pinned revision `d13d10a0`, project version 8.0.1) | `CommonLibSSE-NG/` | GPL-3.0-or-later with listed exceptions (see `CommonLibSSE-NG/COPYING` and `CommonLibSSE-NG/EXCEPTIONS.md`) | Built from source as a subdirectory; statically linked. Its README states that plugins which statically link it must themselves be GPL-3.0-or-later or GPL-compatible — skee64 is released under GPL-3.0-or-later accordingly. |
+| CommonLibSSE-NG (pinned revision `d13d10a0`, project version 8.0.1) | `CommonLibSSE-NG/` | GPL-3.0-or-later with listed exceptions (see `CommonLibSSE-NG/COPYING.txt` and `CommonLibSSE-NG/EXCEPTIONS.md`) | Built from source as a subdirectory; statically linked. Its README states that plugins which statically link it must themselves be GPL-3.0-or-later or GPL-compatible — skee64 is released under GPL-3.0-or-later accordingly. |
+| OpenVR | `CommonLibSSE-NG/extern/openvr/` (recursive submodule) | BSD-3-Clause (see its `LICENSE`) | Pinned by CommonLib; provides the Windows import library and API headers. |
 | tinyxml2 | `skee64/tinyxml2.{h,cpp}` | Zlib License | Redistributed source for preset/XML parsing; see `skee64/tinyxml2.h` header notice. |
 
 ## Supplied by the vcpkg manifest (`vcpkg.json`, pinned baseline)
