@@ -54,6 +54,11 @@ foreach ($file in @('LICENSE','THIRD_PARTY_NOTICES.md','docs/release/INSTALLATIO
     Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination $docs
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/release/DOWNLOAD-README.md') -Destination (Join-Path $docs 'README.md')
+$licences = Join-Path $docs 'licenses'
+New-Item -ItemType Directory -Force -Path $licences | Out-Null
+foreach ($notice in @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'packaging/licenses') -File)) {
+    Copy-Item -LiteralPath $notice.FullName -Destination $licences
+}
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'patch-vr-racesex-swf.ps1') -Destination (Split-Path -Parent $recipe)
 foreach ($file in @('Appearance.as.inc','TextEntry.as.inc','InputTrace.as.inc')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "vr-racesex-patches/$file") -Destination $recipe

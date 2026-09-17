@@ -19,6 +19,8 @@ obligations of the GPL-3.0-or-later static link against CommonLibSSE-NG.
 | --- | --- | --- |
 | DirectXTK (Microsoft) | 2025-10-27 | See `vcpkg_installed/x64-windows-static-md/share/directxtk/copyright` |
 | DirectXMath (Microsoft) | 2025-04-03 | See `vcpkg_installed/x64-windows-static-md/share/directxmath/copyright` |
+| DirectXTex (Microsoft) | Pinned vcpkg baseline | MIT License; see `packaging/licenses/directxtex.txt` |
+| jsoncpp | Pinned vcpkg baseline | See `packaging/licenses/jsoncpp.txt` |
 | fmt | 12.1.0 | See `vcpkg_installed/x64-windows-static-md/share/fmt/copyright` |
 | nlohmann-json | 3.12.0 | MIT License |
 | rapidcsv | 8.90 | See `vcpkg_installed/x64-windows-static-md/share/rapidcsv/copyright` |
@@ -31,7 +33,7 @@ obligations of the GPL-3.0-or-later static link against CommonLibSSE-NG.
 
 | Component | Source | License | Notes |
 | --- | --- | --- | --- |
-| hde64 (instruction-length decoder, from MinHook) | `https://github.com/TsudaKageyu/minhook.git` tag `v1.3.4`, `src/hde/` | MIT License | Vendored by CommonLibSSE-NG's configure step when `SKSE_SUPPORT_PATCH_SAFETY=ON`; compiled into the CommonLibSSE static library only (PRIVATE). |
+| hde64 (instruction-length decoder, from MinHook) | `https://github.com/TsudaKageyu/minhook.git` tag `v1.3.4`, `src/hde/` | BSD-2-Clause; see `packaging/licenses/hde64.txt` and `MinHook-hde64.txt` | Vendored by CommonLibSSE-NG's configure step when `SKSE_SUPPORT_PATCH_SAFETY=ON`; compiled into the CommonLibSSE static library only (PRIVATE). |
 
 ## Retired local third-party trees
 
@@ -39,9 +41,13 @@ The following local source trees were part of the legacy Visual Studio build
 and are retired from the supported build by this migration; their functionality
 is provided by the components above:
 
-- `DirectXTex/` → replaced by DirectXTK facilities supplied through CommonLibSSE-NG's dependency graph.
-- `jsoncpp/` → replaced by nlohmann-json (externally visible JSON field names, numeric/string representations, and ordering requirements are preserved through fixtures).
+- `DirectXTex/` → the old source tree is replaced by the vcpkg DirectXTex dependency, still linked alongside DirectXTK.
+- `jsoncpp/` → the old source tree is replaced by the vcpkg jsoncpp dependency, still linked alongside nlohmann-json.
 - `spdlog/` → replaced by CommonLibSSE-NG's `SKSE::log` (spdlog is still a transitive dependency of CommonLibSSE-NG itself).
+
+Full dependency notices copied from the pinned build inputs are retained in
+`packaging/licenses/` and shipped under `docs/RaceMenuVR2/licenses/` in the
+native add-on. The vcpkg paths above identify their build-time provenance.
 
 ## Runtime prerequisites (end user)
 
