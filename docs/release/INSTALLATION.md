@@ -41,7 +41,13 @@ this add-on: a winning modified loose movie fails the input check. Install
 No JPEXS, BSA extraction, launcher step or manual patching is required.
 
 On an unknown original, corrupted/missing patch or unqualified loader adapter,
-the menu load is refused and the native plugin log records the reason. The original SE
+the menu load is refused and the native plugin log records the reason. A large
+on-screen notice identifies an incompatible original menu and explains which
+asset package is required and which overrides to disable. Missing/corrupted
+patch or initialization failures receive a separate installation notice.
+The warning appears at most once per game process. Correct the installation
+and restart Skyrim; opening the menu again in the same process is not a retry.
+The original SE
 DLL is not a compatible VR fallback. See `runtime-swf-patch.md` for the exact
 contract. The original-BSA route has passed live menu loading and reopen checks.
 
@@ -64,6 +70,15 @@ blank to preserve the tested appearance. The INI documents angular world
 placement separately from 2D movie offsets, and documents the background fill
 ratio **0.79646:1 width:height** (1593×2000; 4:5 is a close practical match).
 Any PNG ratio is supported without stretching; unmatched ratios leave margins.
+
+For vertical adjustment, use `fHeightOffset` and `fColorPickerHeightOffset`
+in `[Menu Profile VR Normal]`. Positive values raise the respective menu,
+negative values lower it (-150..150 Skyrim world units; default 0). These
+are relative to the viewpoint captured when the menu opens or when switching
+Normal/Face view, not absolute world heights or continuously tracked head
+offsets. They are added after angular elevation; both views share the settings.
+The picker height is independent of the main menu height. The surface still
+faces the captured viewer and its pointer interaction plane moves with it.
 
 On update install the matching DLL and runtime patch together and merge INI
 changes. Do not mix patch/native releases. To remove, disable the add-on
