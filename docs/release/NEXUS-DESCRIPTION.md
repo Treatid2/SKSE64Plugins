@@ -1,4 +1,4 @@
-# Nexus page draft — RaceMenu VR 2
+# RaceMenu VR 2 — VR beta 0.1.58
 
 **An add-on to Expired's RaceMenu, adapted for Skyrim VR.**
 
@@ -32,11 +32,11 @@ Install after RaceMenu. Our `skee64.dll` must overwrite the incompatible SE
 DLL. Disable any separately installed legacy `skeevr.dll`; it is not covered
 by that overwrite. Do not install the older Skyrim LE package as a dependency.
 
-The candidate patches the exact original menu **automatically in memory**.
+The add-on patches the exact original menu **automatically in memory**.
 Players need no extraction, JPEXS or manual preparation. Original files remain
 unchanged. Read `INSTALLATION.md`: the matching DLL and small runtime patch
 must be installed together, without a conflicting loose VR menu SWF.
-This new loading route must pass live qualification before publication.
+The original-BSA loading route has been tested live without a generated loose SWF.
 
 ## Credits, source and permissions
 
@@ -54,9 +54,10 @@ user artwork. This is not an official release or implied endorsement by Expired.
 
 Source fork: https://github.com/Treatid2/SKSE64Plugins
 
-**Before publishing, replace this paragraph with the exact release tag/source
-archive link and its binary hash. Do not publish a floating-branch source link
-as the only corresponding-source reference.**
+Corresponding source:
+https://github.com/Treatid2/SKSE64Plugins/tree/racemenu-vr2-v0.1.58
+Versioned downloads and SHA-256 identities:
+https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.58
 
 Nexus Donation Points are intended for Expired. **Confirm the Nexus allocation
 with the recipient/account settings before claiming this is configured.**
@@ -68,3 +69,10 @@ normal/face transitions, picker placement, Filter/Name entry and character-name
 save/load. The user found SteamVR + VR Menu Mouse Fix workable. This is not
 exhaustive coverage of all headsets, controller bindings, presets/sculpt tools,
 third-party extensions or SE/AE standalone compatibility. Back up saves.
+
+Camera-tab options react, but visible camera movement is not confirmed in VR.
+Use the working Face View control instead. The camera callback repair has
+native policy-test coverage and live close/reopen acceptance; that is not
+qualification of the original non-VR Camera tab. All 23 bundled shader sources
+compile through the production runtime compiler in the offline test, but full
+live sculpt/preset regression coverage is still outstanding.

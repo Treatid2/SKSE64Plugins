@@ -4,7 +4,9 @@ param(
     [Parameter(Mandatory)][string]$BaselineRoot,
     [Parameter(Mandatory)][string]$StageRoot,
     [string]$ExpectedPackageVersion = '0.1.54-runtime-swf-patch',
-    [string]$ExpectedNativeVersion = '0.5.0.64'
+    [string]$ExpectedNativeVersion = '0.5.0.64',
+    [ValidateSet('runtime-patch-candidate-not-live-qualified-not-public-release','vr-beta')]
+    [string]$QualificationStatus = 'runtime-patch-candidate-not-live-qualified-not-public-release'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -71,7 +73,7 @@ $manifest = @($files | Sort-Object FullName | ForEach-Object {
     [ordered]@{ path = $_.FullName.Substring($stage.Length + 1).Replace('\','/'); bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
 })
 [ordered]@{ schema = 1; packageVersion = $ExpectedPackageVersion; nativeVersion = $receipt.nativePluginVersion;
-    status = 'runtime-patch-candidate-not-live-qualified-not-public-release'; builtFromDirtyWorktree = ($receipt.source.workingTreeStatus.Count -gt 0);
+    status = $QualificationStatus; builtFromDirtyWorktree = ($receipt.source.workingTreeStatus.Count -gt 0);
     originalAssetsIncluded = $false; localMenuRequired = $false; runtimePatchIncluded = $true; files = $manifest
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $stage 'addon-receipt.json') -Encoding utf8
 Write-Output "Verified asset-free add-on stage: $stage"

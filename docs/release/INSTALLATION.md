@@ -24,7 +24,7 @@ unrelated user settings.
 
 ## Automatic in-memory menu patch
 
-The runtime-patch candidate resolves `Interface/VR/RaceSex_menu.swf` through
+The runtime-patch add-on resolves `Interface/VR/RaceSex_menu.swf` through
 Skyrim's resource system, so the original can remain inside RaceMenu.bsa.
 It verifies this exact input SHA-256 and refuses other versions:
 
@@ -36,14 +36,14 @@ later opens reuse the immutable verified bytes. No original or generated SWF
 is written to disk, so nothing needs undoing when the game closes.
 
 Do **not** install a locally generated menu or external layout-fix SWF with
-this candidate: a winning modified loose movie fails the input check. Install
+this add-on: a winning modified loose movie fails the input check. Install
 `SKSE/Plugins/RaceMenuVR2/racesex-menu.rmp` together with its matching DLL.
 No JPEXS, BSA extraction, launcher step or manual patching is required.
 
 On an unknown original, corrupted/missing patch or unqualified loader adapter,
-the menu load is refused and `skee64.log` records the reason. The original SE
+the menu load is refused and the native plugin log records the reason. The original SE
 DLL is not a compatible VR fallback. See `runtime-swf-patch.md` for the exact
-contract. This new route remains a test candidate until live qualification.
+contract. The original-BSA route has passed live menu loading and reopen checks.
 
 ## SteamVR and OCU
 

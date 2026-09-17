@@ -46,8 +46,8 @@ This is offline equivalence, not a new live test.
 
 The runtime-patch candidate serves the equivalent uncompressed FWS from
 Skyrim's own memory-file object. Only 6,308 literal bytes are carried in the
-patch. See `docs/runtime-swf-patch.md`; the new adapter still requires live
-qualification before merge/release. Player-side JPEXS/extraction is removed.
+patch. See `docs/runtime-swf-patch.md`. The original-BSA loader route has passed
+live menu acceptance; player-side JPEXS/extraction is removed.
 
 The clean public-source checkout at `caeedf0` now compiles for VR Release,
 and the native UTF-8 keyboard policy test passes. No LNK/unresolved-symbol
@@ -61,5 +61,14 @@ SteamVR text/modal/reopen qualification. Upstream's existing
 `/FORCE:UNRESOLVED` linker setting is inherited; audit actual unresolved-symbol
 diagnostics rather than treating forced-link success as proof of validity.
 
-The PR should be **draft** during this remaining release audit. No Nexus
-publication or upstream acceptance is claimed by preparing this contribution.
+The native runtime compiler now has offline coverage for all 23 shader sources.
+All three camera callbacks avoid the invalid flat-runtime layout in VR and have
+native coordinate/offset policy tests. Live Face View and close/reopen work;
+Camera-tab options react without confirmed visible camera movement, which is
+disclosed as a VR limitation rather than called qualified.
+
+The contribution is ready for upstream review, not a claim of merge acceptance.
+Public delivery is a VR beta with the remaining checks disclosed. Independent
+automatic review is currently blocked by the registered review service's
+least-privilege enrolment contract mismatch; no wider mailbox authority or
+credential substitution was used. Maintainers may request smaller PRs.

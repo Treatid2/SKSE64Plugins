@@ -1,4 +1,4 @@
-# Release gate — prepared, not publicly published
+# VR beta release checklist
 
 Baseline: accepted development package 0.1.53, native 0.5.0.63.
 
@@ -19,14 +19,18 @@ Baseline: accepted development package 0.1.53, native 0.5.0.63.
 - [x] Runtime COPY/INSERT patch generated; 6,308 literal bytes, no original four-byte windows in literal runs.
 - [x] JavaScript exact reconstruction, wrong-input, corruption and malformed-record tests pass.
 - [x] Native exact reconstruction and fail-closed parser tests qualified (0.1.54 candidate); both private input files unchanged.
-- [ ] Runtime file adapter qualified live with original BSA only (no generated SWF).
+- [x] Runtime file adapter accepted live with original BSA only (no generated SWF).
 - [ ] Menu reopen/cache, unrelated menus, Filter/Name and PNG regression checks for this new route.
-- [ ] VR Camera-tab position/movement, Face View interaction, close/reopen cleanup and Sculpt checks with the repaired camera and shader callbacks.
+- [x] Repaired camera callbacks retain live Face View and close/reopen operation.
+- [ ] Camera-tab visible movement and full Sculpt regression (movement currently ineffective; disclosed limitation).
 - [ ] Wrong-version/missing-patch refusal checked through the deployed entry point.
 - [ ] Recipient/account confirmation and Nexus DP allocation to Expired.
 - [ ] Public source/tag/archive and exact source link in Nexus/download README.
-- [ ] Final upload/visibility/version approval before publishing to Nexus.
+- [x] User explicitly requested publishing to Nexus and PRs on 2026-09-17.
 
 Do not upload the older development baseline archives: they include original
 Nexus assets. Do not claim prepared source/binaries have passed unperformed
-release checks. No installation/profile change is part of packaging preparation.
+release checks. The VR beta is not an SE/AE standalone qualification.
+Independent automatic review is unavailable because the registered service
+cannot issue the documented bounded review-only credential. No access bypass
+was attempted. Outstanding checks remain visible rather than marked passed.
