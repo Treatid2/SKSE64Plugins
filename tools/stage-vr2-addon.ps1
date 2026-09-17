@@ -3,7 +3,8 @@
 param(
     [Parameter(Mandatory)][string]$BaselineRoot,
     [Parameter(Mandatory)][string]$StageRoot,
-    [string]$ExpectedPackageVersion = '0.1.53'
+    [string]$ExpectedPackageVersion = '0.1.54-runtime-swf-patch',
+    [string]$ExpectedNativeVersion = '0.5.0.64'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -13,6 +14,7 @@ if (Test-Path -LiteralPath $stage) { throw 'StageRoot must not exist. Nothing is
 if ($stage.StartsWith($baseline.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'StageRoot must be outside BaselineRoot.' }
 $receipt = Get-Content -Raw -LiteralPath (Join-Path $baseline 'build-receipt.json') | ConvertFrom-Json
 if ($receipt.gameRuntime -ne 'VR' -or $receipt.packageVersion -ne $ExpectedPackageVersion) { throw 'Unexpected baseline runtime/version.' }
+if ($receipt.nativePluginVersion -ne $ExpectedNativeVersion) { throw 'Unexpected native version; runtime patch requires its matching DLL.' }
 function Copy-VerifiedRuntime([string]$Relative) {
     $entry = @($receipt.runtimeManifest | Where-Object path -eq $Relative)
     if ($entry.Count -ne 1) { throw "Missing/ambiguous retained runtime manifest: $Relative" }
@@ -26,6 +28,13 @@ function Copy-VerifiedRuntime([string]$Relative) {
 }
 # No wildcard import of Data: no BSA/ESP/SWF/original INI.
 Copy-VerifiedRuntime 'Data/SKSE/Plugins/skee64.dll'
+$patchRelative = 'Data/SKSE/Plugins/RaceMenuVR2/racesex-menu.rmp'
+$patchSource = Join-Path $projectRoot 'packaging/runtime-patches/racesex-menu.rmp'
+if ((Get-FileHash -LiteralPath $patchSource).Hash -ne 'BDFA091F19B2601D1314C740361949CBD957F2CB90799A2299D78BFAFB735876' -or
+    (Get-FileHash -LiteralPath (Join-Path $baseline $patchRelative)).Hash -ne (Get-FileHash -LiteralPath $patchSource).Hash) {
+    throw 'Runtime patch is not the reviewed release payload.'
+}
+Copy-VerifiedRuntime $patchRelative
 foreach ($module in @('CharGen','NiOverride')) {
     $sourceRoot = Join-Path $projectRoot "skee64/Shaders/$module"
     foreach ($shader in @(Get-ChildItem -LiteralPath $sourceRoot -File -Recurse)) {
@@ -34,10 +43,8 @@ foreach ($module in @('CharGen','NiOverride')) {
         $runtimePath = "Data/SKSE/Plugins/$module/Shaders/$relative"
         if ((Get-FileHash -LiteralPath $shader.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path $baseline $runtimePath)).Hash) { throw "Shader source differs from baseline: $relative" }
         Copy-VerifiedRuntime $runtimePath
-    }
-    foreach ($entry in @($receipt.runtimeManifest | Where-Object { $_.path -match "^Data/SKSE/Plugins/$module/Shaders/Compiled/[A-Za-z0-9_./-]+\.cso$" })) {
-        if ($entry.path.Contains('..')) { throw 'Unsafe compiled shader path.' }
-        Copy-VerifiedRuntime $entry.path
+        $compiledRelative = [IO.Path]::ChangeExtension($relative,'.cso').Replace('\','/')
+        Copy-VerifiedRuntime "Data/SKSE/Plugins/$module/Shaders/Compiled/$compiledRelative"
     }
 }
 $customIni = '; RaceMenu VR 2 overrides only. Merge existing custom INI settings.' + "`r`n" +
@@ -48,9 +55,8 @@ $resourceDir = Join-Path $stage 'Data/ModderResource'
 New-Item -ItemType Directory -Force -Path $resourceDir | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot 'skee64/IPluginInterface.h') -Destination $resourceDir
 $docs = Join-Path $stage 'Data/docs/RaceMenuVR2'
-$recipe = Join-Path $docs 'AssetPatcher/tools/vr-racesex-patches'
-New-Item -ItemType Directory -Force -Path $recipe | Out-Null
-foreach ($file in @('LICENSE','THIRD_PARTY_NOTICES.md','docs/release/INSTALLATION.md','docs/release/RELEASE-CHECKLIST.md','docs/menu-customization.md','docs/menu-appearance.md')) {
+New-Item -ItemType Directory -Force -Path $docs | Out-Null
+foreach ($file in @('LICENSE','THIRD_PARTY_NOTICES.md','docs/release/INSTALLATION.md','docs/release/RELEASE-CHECKLIST.md','docs/menu-customization.md','docs/menu-appearance.md','docs/runtime-swf-patch.md')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination $docs
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/release/DOWNLOAD-README.md') -Destination (Join-Path $docs 'README.md')
@@ -59,17 +65,13 @@ New-Item -ItemType Directory -Force -Path $licences | Out-Null
 foreach ($notice in @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'packaging/licenses') -File)) {
     Copy-Item -LiteralPath $notice.FullName -Destination $licences
 }
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'patch-vr-racesex-swf.ps1') -Destination (Split-Path -Parent $recipe)
-foreach ($file in @('Appearance.as.inc','TextEntry.as.inc','InputTrace.as.inc')) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "vr-racesex-patches/$file") -Destination $recipe
-}
 $files = @(Get-ChildItem -LiteralPath (Join-Path $stage 'Data') -File -Recurse)
 if (@($files | Where-Object { $_.Extension -in @('.bsa','.esp','.esm','.swf','.png') -or $_.Name -in @('skeevr.dll','RaceMenuPrismaBridge.dll','skee64.ini','SearchWidget.as') }).Count) { throw 'Forbidden upstream/private asset in add-on stage.' }
 $manifest = @($files | Sort-Object FullName | ForEach-Object {
     [ordered]@{ path = $_.FullName.Substring($stage.Length + 1).Replace('\','/'); bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
 })
 [ordered]@{ schema = 1; packageVersion = $ExpectedPackageVersion; nativeVersion = $receipt.nativePluginVersion;
-    status = 'prepared-native-addon-requires-local-menu-not-public-release'; builtFromDirtyWorktree = ($receipt.source.workingTreeStatus.Count -gt 0);
-    originalAssetsIncluded = $false; localMenuRequired = $true; files = $manifest
+    status = 'runtime-patch-candidate-not-live-qualified-not-public-release'; builtFromDirtyWorktree = ($receipt.source.workingTreeStatus.Count -gt 0);
+    originalAssetsIncluded = $false; localMenuRequired = $false; runtimePatchIncluded = $true; files = $manifest
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $stage 'addon-receipt.json') -Encoding utf8
 Write-Output "Verified asset-free add-on stage: $stage"

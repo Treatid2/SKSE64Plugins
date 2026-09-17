@@ -23,7 +23,19 @@ This is preparation evidence, not a release certification or new headset test.
   public-release provenance.
 - Packaging uses an explicit asset-free allowlist and the MO2 deterministic
   package controller. Its archive root is the contents of Data, with no
-  installer flattening required. The local menu recipe is still mandatory.
+  installer flattening required. This earlier candidate required a local menu
+  recipe and is superseded by the runtime-patch candidate below.
+
+## Runtime-patch candidate (0.1.54)
+
+The automatic route reconstructs the accepted menu in memory from the exact
+original resource. It does not ship a whole SWF or require player-side JPEXS.
+The reviewed patch has 6,308 literal bytes and 411,086 COPY bytes; the longest
+literal run is 13 bytes, with no original four-byte windows in literal runs.
+Eight reference tests pass, including exact accepted-movie reconstruction.
+Native parser tests and compilation pass. Final native/reference equivalence,
+archive inspection and live adapter qualification are recorded separately in
+`runtime-swf-patch.md` and RELEASE-CHECKLIST.md. No live pass is claimed here.
 
 Windows clean-source reproduction exposed archive handling gaps for repository
 metadata symlinks and the nested OpenVR gitlink. The wrapper now exports pinned

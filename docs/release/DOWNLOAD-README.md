@@ -1,9 +1,10 @@
-# RaceMenu VR 2 — prepared native add-on
+# RaceMenu VR 2 — runtime-patch candidate
 
 Read [INSTALLATION.md](INSTALLATION.md) before installing. This download
-contains no original RaceMenu assets and **requires local menu generation**.
-The recipe is in `AssetPatcher/tools/patch-vr-racesex-swf.ps1`; run its example
-from the `AssetPatcher` directory so `./tools/...` resolves correctly.
+contains no original RaceMenu assets. The exact original menu is verified and
+transformed automatically in memory. No manual menu generation is needed.
+The matching DLL and `RaceMenuVR2/racesex-menu.rmp` must be installed together;
+disable other loose VR menu SWFs and legacy `skeevr.dll`.
 
 Download RaceMenu SE 0.4.20.0 assets from Expired:
 https://www.nexusmods.com/skyrimspecialedition/mods/19080
@@ -15,11 +16,10 @@ The tested OCU wand route uses OCU's own pointer system.
 
 Treatid2 source fork: https://github.com/Treatid2/SKSE64Plugins
 
-This candidate's DLL is the retained 0.1.53 development binary (native 0.5.0.63),
-SHA-256 `3CB289C2338C8397038272BDAC9F96A4CB783652A4B2DDE1CF18A95939F2263E`.
-It was built from an uncommitted development worktree. This candidate is for
-release preparation, **not a publicly tagged GPL binary release**. Replace
-this paragraph with the final clean-build tag/archive/hash before publication.
+This is an unpublished runtime-patch test candidate. Native build and
+reconstruction checks do not replace live loading/modal/reopen qualification.
+The public binary still needs an immutable corresponding-source release tag
+and binary hash. Replace this paragraph with those identities before publication.
 
 Our native source/recipes inherit the upstream GPL licence. Original assets
 and user PNG artwork are not relicensed. See LICENSE and THIRD_PARTY_NOTICES.md.

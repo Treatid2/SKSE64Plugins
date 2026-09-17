@@ -22,9 +22,9 @@ See [installation](docs/release/INSTALLATION.md),
 - **SteamVR only:** [VR Menu Mouse Fix](https://www.nexusmods.com/skyrimspecialedition/mods/33414)
   and its requirements. Enable its laser pointer. OCU's tested native wand path
   does not require this helper. Neither pointer provider is bundled here.
-- Local menu preparation: JPEXS Free Flash Decompiler **26.2.1**, plus a BSA
-  extraction tool if the original movie is inside RaceMenu.bsa. These are
-  preparation tools, not runtime dependencies.
+- The runtime-patch candidate automatically transforms the exact original
+  menu in memory. Players need no JPEXS, BSA extractor or generated-menu mod.
+  See the release checklist: this new loading route still needs live qualification.
 
 The original [Skyrim LE RaceMenu page](https://www.nexusmods.com/skyrim/mods/29624)
 is credited, but its incompatible files are **not** an install prerequisite.

@@ -32,10 +32,11 @@ Install after RaceMenu. Our `skee64.dll` must overwrite the incompatible SE
 DLL. Disable any separately installed legacy `skeevr.dll`; it is not covered
 by that overwrite. Do not install the older Skyrim LE package as a dependency.
 
-The original menu is patched **locally on your computer** using the supplied
-recipe and JPEXS 26.2.1. A BSA extractor is needed to obtain the original movie.
-Read `INSTALLATION.md`: the native download alone does not provide the required
-patched menu. Original and generated assets must not be reuploaded.
+The candidate patches the exact original menu **automatically in memory**.
+Players need no extraction, JPEXS or manual preparation. Original files remain
+unchanged. Read `INSTALLATION.md`: the matching DLL and small runtime patch
+must be installed together, without a conflicting loose VR menu SWF.
+This new loading route must pass live qualification before publication.
 
 ## Credits, source and permissions
 

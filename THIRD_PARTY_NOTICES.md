@@ -28,6 +28,7 @@ obligations of the GPL-3.0-or-later static link against CommonLibSSE-NG.
 | spdlog | 1.16.0 | MIT License |
 | toml11 | 4.4.0 | See `vcpkg_installed/x64-windows-static-md/share/toml11/copyright` |
 | xbyak | 7.28 | See `vcpkg_installed/x64-windows-static-md/share/xbyak/copyright` |
+| zlib | 1.3.1 (pinned baseline) | zlib licence; see `packaging/licenses/zlib.txt` |
 
 ## Configure-time fetched (via CommonLibSSE-NG)
 

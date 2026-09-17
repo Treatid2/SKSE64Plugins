@@ -22,33 +22,28 @@ DLL. Its custom INI holds only our overrides; the original `skee64.ini` remains
 installed. Preserve/merge an existing `skee64_custom.ini` rather than losing
 unrelated user settings.
 
-## Generate the menu locally
+## Automatic in-memory menu patch
 
-Extract **only** `Interface/VR/RaceSex_menu.swf` from your original RaceMenu.bsa
-with a BSA extractor. Leave the original BSA unchanged. The recipe verifies
-this input SHA-256 and refuses other versions:
+The runtime-patch candidate resolves `Interface/VR/RaceSex_menu.swf` through
+Skyrim's resource system, so the original can remain inside RaceMenu.bsa.
+It verifies this exact input SHA-256 and refuses other versions:
 
 `3A012DA4FED80637CE3257B9B2B89243BEFAB29A4BEC5316A935CEA87C889963`
 
-Download JPEXS 26.2.1 from its official project. Using PowerShell, run the
-included recipe (substitute your own absolute paths):
+It reconstructs and verifies the complete patched movie before giving it to
+Scaleform. This happens once on the first menu load in each game process;
+later opens reuse the immutable verified bytes. No original or generated SWF
+is written to disk, so nothing needs undoing when the game closes.
 
-```powershell
-pwsh -NoProfile -File .\tools\patch-vr-racesex-swf.ps1 `
-  -InputSwf 'C:\original\Interface\VR\RaceSex_menu.swf' `
-  -OutputSwf 'C:\My RaceMenu VR Menu\Interface\VR\RaceSex_menu.swf' `
-  -FfdecCli 'C:\ffdec\ffdec-cli.exe' `
-  -WorkingDirectory 'C:\RaceMenu patch working files'
-```
+Do **not** install a locally generated menu or external layout-fix SWF with
+this candidate: a winning modified loose movie fails the input check. Install
+`SKSE/Plugins/RaceMenuVR2/racesex-menu.rmp` together with its matching DLL.
+No JPEXS, BSA extraction, launcher step or manual patching is required.
 
-The output must be a **new** file; the original is never overwritten. Keep the
-generated movie private. Install the contents of `My RaceMenu VR Menu` as a
-local MO2 mod after RaceMenu and the native add-on. The installed relative path
-must be `Interface/VR/RaceSex_menu.swf`, not `Data/Interface/...` or another
-nested wrapper. This local generated movie is essential; the native-only ZIP
-is not sufficient by itself. No online upload of your original/generated
-movie is needed. Temporary exports contain original code/artwork and must not
-be included in public packages.
+On an unknown original, corrupted/missing patch or unqualified loader adapter,
+the menu load is refused and `skee64.log` records the reason. The original SE
+DLL is not a compatible VR fallback. See `runtime-swf-patch.md` for the exact
+contract. This new route remains a test candidate until live qualification.
 
 ## SteamVR and OCU
 
@@ -70,7 +65,7 @@ placement separately from 2D movie offsets, and documents the background fill
 ratio **0.79646:1 width:height** (1593×2000; 4:5 is a close practical match).
 Any PNG ratio is supported without stretching; unmatched ratios leave margins.
 
-On update regenerate the local menu with the matching recipe and merge INI
-changes. Do not mix movie/native releases. To remove, disable both add-on mods
+On update install the matching DLL and runtime patch together and merge INI
+changes. Do not mix patch/native releases. To remove, disable the add-on
 and restore a complete, compatible RaceMenu setup for the runtime you intend
 to use. The original SE DLL by itself is not a Skyrim VR fallback.

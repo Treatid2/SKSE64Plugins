@@ -16,7 +16,12 @@ Baseline: accepted development package 0.1.53, native 0.5.0.63.
 - [ ] Broader SteamVR normal/face, Filter/Name, picker, close/reopen checks.
 - [ ] AE regression and native consumer ABI/lifecycle checks for final source.
 - [ ] Independent PR-scale review returned and evaluated.
-- [ ] Local asset preparation UX independently tried from the public instructions.
+- [x] Runtime COPY/INSERT patch generated; 6,308 literal bytes, no original four-byte windows in literal runs.
+- [x] JavaScript exact reconstruction, wrong-input, corruption and malformed-record tests pass.
+- [x] Native exact reconstruction and fail-closed parser tests qualified (0.1.54 candidate); both private input files unchanged.
+- [ ] Runtime file adapter qualified live with original BSA only (no generated SWF).
+- [ ] Menu reopen/cache, unrelated menus, Filter/Name and PNG regression checks for this new route.
+- [ ] Wrong-version/missing-patch refusal checked through the deployed entry point.
 - [ ] Recipient/account confirmation and Nexus DP allocation to Expired.
 - [ ] Public source/tag/archive and exact source link in Nexus/download README.
 - [ ] Final upload/visibility/version approval before publishing to Nexus.

@@ -15,6 +15,12 @@ param(
 
     [string]$PromoteDirectory,
 
+    [string]$PromoteNativeDirectory,
+
+    [string]$SwfQualificationSource,
+
+    [string]$SwfQualificationTarget,
+
     [string]$PromoteBaselineDirectory,
 
     [string]$BaselineAssetSource,
@@ -55,6 +61,15 @@ if ($GameRuntime -eq 'VR' -and $Crt -eq 'static') {
 }
 if ($PromoteBaselineDirectory -and -not $BaselineAssetSource) {
     throw 'BaselineAssetSource is required when PromoteBaselineDirectory is supplied.'
+}
+if ([bool]$SwfQualificationSource -ne [bool]$SwfQualificationTarget -or
+    (($SwfQualificationSource -or $SwfQualificationTarget) -and $GameRuntime -ne 'VR')) {
+    throw 'Private SWF qualification requires both source and target with the VR runtime.'
+}
+foreach ($privateInput in @($SwfQualificationSource,$SwfQualificationTarget)) {
+    if ($privateInput -and -not (Test-Path -LiteralPath $privateInput -PathType Leaf)) {
+        throw "Private qualification input does not exist: $privateInput"
+    }
 }
 if ($PromoteBaselineDirectory -and $GameRuntime -ne 'VR') {
     throw 'The self-contained RaceMenu NG baseline package is currently defined only for Skyrim VR.'
@@ -205,6 +220,67 @@ try {
     $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $dll
     Write-Host "Verified compile artifact (not installed or distributed): $dll"
     Write-Host "SHA-256: $($hash.Hash)"
+    $swfQualification = $null
+    if ($GameRuntime -eq 'VR') {
+        $swfTestArgs = @()
+        if ($SwfQualificationSource) {
+            $sourceBefore = (Get-FileHash -LiteralPath $SwfQualificationSource).Hash
+            $targetBefore = (Get-FileHash -LiteralPath $SwfQualificationTarget).Hash
+            $swfTestArgs = @($SwfQualificationSource,
+                (Join-Path $projectPath 'packaging/runtime-patches/racesex-menu.rmp'),$SwfQualificationTarget)
+        }
+        $swfTestOutput = @(& (Join-Path $buildRoot "$preset/vr2_swf_patch_tests.exe") @swfTestArgs)
+        if ($LASTEXITCODE -ne 0) { throw 'Native SWF patch qualification failed; do not promote.' }
+        $swfTestOutput | Write-Output
+        if ($SwfQualificationSource -and
+            (($sourceBefore -ne (Get-FileHash -LiteralPath $SwfQualificationSource).Hash) -or
+             ($targetBefore -ne (Get-FileHash -LiteralPath $SwfQualificationTarget).Hash))) {
+            throw 'Private SWF input changed during qualification; do not promote.'
+        }
+        $swfQualification = [ordered]@{ parserTests='passed'; privateExactOutputMatch=[bool]$SwfQualificationSource;
+            originalInputUnchanged=[bool]$SwfQualificationSource; targetInputUnchanged=[bool]$SwfQualificationSource;
+            output=$swfTestOutput }
+    }
+
+    if ($PromoteNativeDirectory) {
+        if ($GameRuntime -ne 'VR') { throw 'Runtime SWF add-on promotion requires VR.' }
+        $nativeRoot = [IO.Path]::GetFullPath($PromoteNativeDirectory)
+        if (-not $nativeRoot.StartsWith('L:\Codex\', [StringComparison]::OrdinalIgnoreCase) -or
+            (Test-Path -LiteralPath $nativeRoot)) { throw 'Native promotion requires a new authoritative L:\Codex subdirectory.' }
+        $nativePlugins = Join-Path $nativeRoot 'Data/SKSE/Plugins'
+        New-Item -ItemType Directory -Force -Path $nativePlugins | Out-Null
+        Copy-Item -LiteralPath $dll -Destination (Join-Path $nativePlugins 'skee64.dll')
+        foreach ($module in @('CharGen','NiOverride')) {
+            $destination = Join-Path $nativePlugins "$module/Shaders"
+            New-Item -ItemType Directory -Force -Path $destination | Out-Null
+            Get-ChildItem -LiteralPath (Join-Path $projectPath "skee64/Shaders/$module") -Force |
+                Copy-Item -Destination $destination -Recurse -Force
+            Copy-Item -LiteralPath (Join-Path $buildRoot "$preset/Shaders/$module/Compiled") -Destination $destination -Recurse -Force
+        }
+        $patchDestination = Join-Path $nativePlugins 'RaceMenuVR2'
+        New-Item -ItemType Directory -Force -Path $patchDestination | Out-Null
+        Copy-Item -LiteralPath (Join-Path $projectPath 'packaging/runtime-patches/racesex-menu.rmp') -Destination $patchDestination
+        $nativeSymbols = Join-Path $nativeRoot 'symbols'
+        New-Item -ItemType Directory -Force -Path $nativeSymbols | Out-Null
+        foreach ($extension in @('.pdb','.map')) {
+            $symbol = [IO.Path]::ChangeExtension($dll,$extension)
+            if (Test-Path -LiteralPath $symbol -PathType Leaf) {
+                Copy-Item -LiteralPath $symbol -Destination $nativeSymbols
+            }
+        }
+        $nativeFiles = @(Get-ChildItem -LiteralPath (Join-Path $nativeRoot 'Data') -File -Recurse)
+        if (@($nativeFiles | Where-Object Extension -in @('.swf','.bsa','.esp','.esm','.png')).Count) { throw 'Original/private asset in native promotion.' }
+        if ((Get-FileHash -LiteralPath (Join-Path $nativePlugins 'skee64.dll')).Hash -ne $hash.Hash) { throw 'Promoted native DLL mismatch.' }
+        [ordered]@{ schema=1; packageVersion=$BaselinePackageVersion; nativePluginVersion=$NativePluginVersion;
+            gameRuntime=$GameRuntime; builtUtc=[DateTimeOffset]::UtcNow.ToString('o'); status='compile-verified-not-runtime-tested';
+            swfQualification=$swfQualification;
+            source=[ordered]@{ commit=(& git -C $projectPath rev-parse HEAD).Trim(); workingTreeStatus=@(& git -C $projectPath status --short) };
+            runtimeManifest=@($nativeFiles | Sort-Object FullName | ForEach-Object {
+                [ordered]@{ path=$_.FullName.Substring($nativeRoot.Length+1).Replace('\','/'); bytes=$_.Length; sha256=(Get-FileHash -LiteralPath $_.FullName).Hash }
+            })
+        } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $nativeRoot 'build-receipt.json') -Encoding utf8
+        Write-Host "Promoted asset-free native build: $nativeRoot"
+    }
 
     if ($PromoteDirectory) {
         $bridgeHash = Get-FileHash -Algorithm SHA256 -LiteralPath $bridgeDll

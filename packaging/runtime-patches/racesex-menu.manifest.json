@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "format": "RMSWFP01",
+  "packageVersion": "0.1.54-runtime-swf-patch",
+  "nativeVersion": "0.5.0.64",
+  "originalAssetVersion": "RaceMenu SE 0.4.20.0",
+  "originalFileBytes": 104279,
+  "originalFileSha256": "3a012da4fed80637ce3257b9b2b89243befab29a4bec5316a935cea87c889963",
+  "canonicalOriginalBytes": 372756,
+  "canonicalOriginalSha256": "647d722b15becb418cf07af09c6e2f1d5fa5a0d2b308e23c0db12339eea4ae4e",
+  "canonicalOutputBytes": 417394,
+  "canonicalOutputSha256": "95daae0e2e0cebc779bd89a710549b9186f1b2b94695e7d5084bfa0fa6b7b927",
+  "patchBytes": 148722,
+  "patchSha256": "bdfa091f19b2601d1314c740361949cbd957f2cb90799a2299d78bfafb735876",
+  "operations": 17850,
+  "copiedOutputBytes": 411086,
+  "literalBytes": 6308,
+  "longestLiteralRun": 13,
+  "originalFourByteWindowsInLiteralRuns": 0,
+  "auditBoundary": "Literal-run byte reuse audit, not an authorship classifier. Original and reconstructed SWFs are not distributed."
+}

@@ -39,6 +39,7 @@
 #	include "MenuBackgroundProjection.h"
 #	include "MenuPolarPlacementPolicy.h"
 #	include "RaceSexMenuFaceView.h"
+#	include "RaceSexMenuSwfPatch.h"
 
 namespace RE::ScaleformEvent
 {
@@ -679,6 +680,7 @@ namespace
 		RE::GFxMovieView::ScaleModeType a_mode,
 		float a_backgroundAlpha)
 	{
+		if (!SKEE::RaceSexMenuSwfPatch::Prepare(a_manager)) return false;
 		// This general VR setting is sampled while Skyrim constructs the projected
 		// menu quad.  Override it before the RaceSex movie is loaded, then restore
 		// it on RaceSexMenu's close event so subsequent menus keep their own size.
@@ -688,13 +690,18 @@ namespace
 			a_menu->menuFlags.set(RE::UI_MENU_FLAGS::kRendersOffscreenTargets);
 		}
 
-		const auto loaded = g_originalLoadMovie && g_originalLoadMovie(
+		auto loaded = g_originalLoadMovie && g_originalLoadMovie(
 			a_manager,
 			a_menu,
 			a_viewOut,
 			kVRRaceSexMovie,
 			a_mode,
 			a_backgroundAlpha);
+		if (loaded && !SKEE::RaceSexMenuSwfPatch::HasServedMovie()) {
+			SKSE::log::error("RaceSex movie did not pass the runtime SWF adapter; refusing unverified cache/fallback");
+			a_viewOut.reset();
+			loaded = false;
+		}
 
 		if (loaded && a_viewOut) {
 			// Keep one movie-local mouse endpoint for the engine's native VR events.

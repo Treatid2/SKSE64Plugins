@@ -49,10 +49,18 @@ files. The generated `build-receipt.json` records source provenance, exclusions,
 and a SHA-256 manifest of every deployable runtime file.
 
 **Do not distribute that baseline:** it includes original Nexus assets. Public
-packaging uses `tools/stage-vr2-addon.ps1` with a verified retained baseline and
+packaging uses `tools/stage-vr2-addon.ps1` with a verified retained native build and
 a new staging directory. Package the resulting `Data` contents directly at ZIP
-root. That stage omits original assets and includes the local menu recipe;
+root. That stage omits original assets and includes the runtime byte patch;
 see `docs/release/INSTALLATION.md`. Use managed build scratch for staging.
+
+For the runtime-patch candidate, use `tools/vr2-build.ps1` with
+`-BaselinePackageVersion 0.1.54-runtime-swf-patch -NativePluginVersion 0.5.0.64`
+and `-PromoteNativeDirectory` pointing to a new L:\Codex artifact directory.
+This produces an asset-free native manifest suitable for the staging tool.
+Do not use the legacy private baseline promotion for the runtime route: its
+generated loose SWF conflicts with the exact-original input requirement.
+Maintainer patch generation/auditing is documented in `docs/runtime-swf-patch.md`.
 
 PowerShell 7 is required because the managed scratch controller uses current
 .NET filesystem APIs. An installed Visual Studio x64 environment may be

@@ -92,6 +92,7 @@ find_package(directxtk CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(directxmath CONFIG REQUIRED)
+find_package(ZLIB REQUIRED)
 
 set(SKEE_COMMONLIB_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/CommonLibSSE-NG" CACHE PATH
     "CommonLibSSE-NG source directory")
@@ -136,6 +137,8 @@ set(SKEE_SOURCES
 	skee64/MenuConfiguration.cpp
 	skee64/MenuExtensions.cpp
 	skee64/RaceSexMenuFaceView.cpp
+	skee64/SwfBytePatch.cpp
+	skee64/RaceSexMenuSwfPatch.cpp
     skee64/ScaleformCharGenFunctions.cpp
     skee64/ScaleformFunctions.cpp
     skee64/ScaleformUtils.cpp
@@ -210,6 +213,8 @@ target_link_libraries(skee64 PRIVATE
     shlwapi.lib
     ole32.lib
     windowscodecs.lib
+    bcrypt.lib
+    ZLIB::ZLIB
 )
 set_target_properties(skee64 PROPERTIES OUTPUT_NAME "skee64")
 target_link_options(skee64 PRIVATE /FORCE:UNRESOLVED)
@@ -298,6 +303,13 @@ if(DEFINED ENV{Skyrim64Path})
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    add_executable(vr2_swf_patch_tests tests/swf-byte-patch.cpp skee64/SwfBytePatch.cpp)
+    target_include_directories(vr2_swf_patch_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    target_link_libraries(vr2_swf_patch_tests PRIVATE bcrypt.lib ZLIB::ZLIB)
+    add_custom_command(TARGET vr2_swf_patch_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_swf_patch_tests>"
+        COMMENT "Checking fail-closed native SWF patch parser")
+    add_dependencies(skee64 vr2_swf_patch_tests)
     # Pure native policy tests run as part of a VR build; never ship/install them.
     add_executable(vr2_keyboard_policy_tests tests/vr-keyboard-policy.cpp)
     target_include_directories(vr2_keyboard_policy_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
@@ -305,6 +317,11 @@ if(SKEE_GAME_RUNTIME STREQUAL "VR")
         COMMAND "$<TARGET_FILE:vr2_keyboard_policy_tests>"
         COMMENT "Checking native VR keyboard UTF-8 policy")
     add_dependencies(skee64 vr2_keyboard_policy_tests)
+endif()
+
+if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    install(FILES packaging/runtime-patches/racesex-menu.rmp
+        DESTINATION "Data/SKSE/Plugins/RaceMenuVR2")
 endif()
 
 install(TARGETS skee64 RUNTIME DESTINATION "Data/SKSE/Plugins")

@@ -22,7 +22,8 @@ and unlicensed complete assets are excluded. Original assets are local inputs.
   native PNG registration and projection-aware aspect preservation.
 - Backward-compatible CharacterCreation vtable prefix and separately versioned
   MenuExtensions API; configuration and bounded read-only/opt-in diagnostics.
-- Source-pinned local asset patch recipe, policy/surrogate tests and additive
+- Exact-input automatic in-memory COPY/INSERT SWF patch, audited literals,
+  native/reference parser tests, maintainer recipe and additive
   packaging documentation. No full Nexus menu/class/artwork redistribution.
 
 ## Dependency PRs (already submitted)
@@ -42,6 +43,11 @@ name save/load. SteamVR with the separately installed Mouse Fix was reported
 workable. The public asset recipe reproduces the exact accepted movie SHA-256
 `E68FCBB62E26271FBD925761DFB77A194AB9856F13F703EA8BFF975DDDE24FC2`.
 This is offline equivalence, not a new live test.
+
+The runtime-patch candidate serves the equivalent uncompressed FWS from
+Skyrim's own memory-file object. Only 6,308 literal bytes are carried in the
+patch. See `docs/runtime-swf-patch.md`; the new adapter still requires live
+qualification before merge/release. Player-side JPEXS/extraction is removed.
 
 The clean public-source checkout at `caeedf0` now compiles for VR Release,
 and the native UTF-8 keyboard policy test passes. No LNK/unresolved-symbol
