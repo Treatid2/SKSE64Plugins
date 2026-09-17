@@ -303,6 +303,18 @@ if(DEFINED ENV{Skyrim64Path})
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    # Exercise the production DLL-export lookup and compiler, not just fxc or
+    # a duplicated test implementation. No Skyrim process or GPU is required.
+    add_executable(vr2_shader_compile_tests tests/shader-compile.cpp skee64/CDXShaderCompile.cpp)
+    target_include_directories(vr2_shader_compile_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    target_link_libraries(vr2_shader_compile_tests PRIVATE CommonLibSSE xbyak::xbyak Microsoft::DirectXTK)
+    target_compile_definitions(vr2_shader_compile_tests PRIVATE XBYAK_NO_OP_NAMES)
+    target_compile_options(vr2_shader_compile_tests PRIVATE /permissive- /bigobj)
+    target_precompile_headers(vr2_shader_compile_tests PRIVATE skee64/pch.h)
+    add_custom_command(TARGET vr2_shader_compile_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_shader_compile_tests>" "${SKEE_SHADER_SRC_ROOT}"
+        COMMENT "Checking production runtime shader compilation and error handling")
+    add_dependencies(skee64 vr2_shader_compile_tests)
     add_executable(vr2_swf_patch_tests tests/swf-byte-patch.cpp skee64/SwfBytePatch.cpp)
     target_include_directories(vr2_swf_patch_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
     target_link_libraries(vr2_swf_patch_tests PRIVATE bcrypt.lib ZLIB::ZLIB)
