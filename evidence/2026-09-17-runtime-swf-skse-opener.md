@@ -56,3 +56,22 @@ staging manifest for member path, byte length and SHA-256. Native DLL SHA-256:
 8161A71959F9DDA69B855ABB0739C935D63842347B1ADA28C08F376EBF03CB69.
 The manifest is addon-stage-0155-receipt.json; native build output is retained
 in native-build-0155.log. These are candidate build checks, not live acceptance.
+
+## Live acceptance of the corrected loading route
+
+The user subsequently reported that the menu looked good and showed no visible
+difference from the independently built version. Read-only inspection of the
+current RaceMenuNGVR2.log confirms, at 12:47:59 BST on 17 September:
+
+- The active type-10 SKSE wrapper passed qualification; native slot 3 matched.
+- The exact original was verified and 417394 bytes reconstructed in memory.
+- The adapter installed on the SKSE VR 2.0.12 opener.
+- It served verified FWS bytes=417394, open=1.
+- The forced VR/RaceSex_menu movie reported loaded=true at 12:47:59.742.
+
+This establishes successful live loading through the runtime patch, rather
+than a fallback movie. It does not establish every interaction or a complete
+release qualification. The same log has separate shader compilation failures
+at 12:49:02 (D3DCompile function unavailable); these must not be hidden by a
+blanket claim that the entire build is error-free. No debugger or game mutation
+was used for this acceptance check.

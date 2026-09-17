@@ -91,16 +91,20 @@ in RaceMenuNGVR2.log and returns the engine's normal failed-load path. No stale 
 file or partly patched program is exposed as a fallback.
 
 Static evidence uses a retained immutable memory dump, not a live debugger
-attachment. **This new runtime adapter still requires live qualification**;
-offline reconstruction and successful compilation do not establish that.
+attachment. Offline reconstruction and successful compilation alone do not
+establish live qualification; the corrected loading route's acceptance is
+recorded below. Full feature and release qualification remain separate.
 
 The first 0.1.54 live test rejected SKSE's normal wrapper before reconstruction,
 causing character creation to be skipped. Read-only external inspection
 (QUERY_LIMITED_INFORMATION | VM_READ, without debugger attachment, thread
 suspension or writes) established that the native opener was unchanged and the
 active type-10 opener belonged to `sksevr_1_4_15.dll`, RTTI `SKSEFileLoader`.
-0.1.55 / native 0.5.0.65 corrects this specific adapter routing error; live
-acceptance remains required. The patch payload itself is unchanged.
+0.1.55 / native 0.5.0.65 corrects this specific adapter routing error. Its live
+log subsequently confirmed exact-original verification, in-memory reconstruction,
+verified FWS delivery and successful VR movie loading; the user reported visual
+parity with the independently built menu. This qualifies the corrected loading
+route, not every feature or a complete release. The patch payload is unchanged.
 
 ## Offline qualification (17 September 2026)
 
