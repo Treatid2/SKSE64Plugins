@@ -303,6 +303,15 @@ if(DEFINED ENV{Skyrim64Path})
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    add_executable(vr2_camera_policy_tests tests/vr-camera-policy.cpp)
+    target_include_directories(vr2_camera_policy_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    target_link_libraries(vr2_camera_policy_tests PRIVATE CommonLibSSE xbyak::xbyak)
+    target_compile_definitions(vr2_camera_policy_tests PRIVATE XBYAK_NO_OP_NAMES)
+    target_precompile_headers(vr2_camera_policy_tests PRIVATE skee64/pch.h)
+    add_custom_command(TARGET vr2_camera_policy_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_camera_policy_tests>"
+        COMMENT "Checking VR camera dispatch and tracking-origin coordinate policy")
+    add_dependencies(skee64 vr2_camera_policy_tests)
     # Exercise the production DLL-export lookup and compiler, not just fxc or
     # a duplicated test implementation. No Skyrim process or GPU is required.
     add_executable(vr2_shader_compile_tests tests/shader-compile.cpp skee64/CDXShaderCompile.cpp)

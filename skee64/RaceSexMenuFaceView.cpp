@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "RaceSexMenuFaceView.h"
+#include "RaceSexCameraPolicy.h"
 #include <atomic>
 #include <cmath>
 
@@ -15,11 +16,13 @@ namespace SKEE::FaceView
         std::atomic<std::uint64_t> generation{0};
         RE::NiPointer<RE::NiNode> room;
         RE::NiPoint3 offset{}, lastLocal{}, direction{}, anchorHmd{};
+        RE::NiPoint3 manualWorld{};
         RE::NiPoint3 anchorHead{};
         RE::NiAVObject* headIdentity{}; // identity only, never dereferenced
         RE::TESRace* raceIdentity{};
         float avatarScale{};
         std::atomic<unsigned> anchorRefreshes{0}, originReplacements{0}, updates{0};
+        std::atomic<unsigned> cameraReads{0}, cameraMoves{0}, cameraRejected{0}, cameraCancelled{0};
         bool Finite(const RE::NiPoint3& p) { return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z); }
         void RemoveOffset()
         {
@@ -29,7 +32,64 @@ namespace SKEE::FaceView
                 RE::NiUpdateData update{0, RE::NiUpdateData::Flag::kDirty};
                 room->Update(update);
             }
-            room.reset(); offset = {};
+            room.reset(); offset = {}; manualWorld = {};
+        }
+        struct CameraNodes
+        {
+            RE::NiPointer<RE::NiNode> origin;
+            RE::NiPointer<RE::NiAVObject> hmd, avatar;
+            RE::NiPointer<RE::NiNode> originParent, avatarParent;
+            RE::NiTransform frame;
+        };
+        bool ResolveCamera(CameraNodes& result)
+        {
+#if defined(ENABLE_SKYRIM_VR)
+            if (!REL::Module::IsVR()) return false;
+            auto* ui = RE::UI::GetSingleton();
+            if (!ui || !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) return false;
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            auto* nodes = player ? player->GetVRNodeData() : nullptr;
+            auto* avatar = player ? player->Get3D(false) : nullptr;
+            auto* origin = nodes ? nodes->RoomNode.get() : nullptr;
+            auto* hmd = nodes ? nodes->HmdNode.get() : nullptr;
+            if (!avatar || !origin || !origin->parent || !hmd) return false;
+            // Moving this origin must move the headset, NOT the edited avatar.
+            for (auto* p = avatar; p; p = p->parent) if (p == origin) return false;
+            bool tracked = false;
+            for (auto* p = hmd->parent; p; p = p->parent) if (p == origin) tracked = true;
+            const RE::NiTransform frame = avatar->parent ? avatar->parent->world : RE::NiTransform{};
+            if (!tracked || !CameraPolicy::Valid(frame) || !CameraPolicy::Valid(origin->parent->world) ||
+                !CameraPolicy::Valid(hmd->world) || !Finite(origin->local.translate)) return false;
+            result.origin.reset(origin); result.hmd.reset(hmd); result.avatar.reset(avatar); result.frame = frame;
+            result.originParent.reset(origin->parent); result.avatarParent.reset(avatar->parent);
+            return true;
+#else
+            return false;
+#endif
+        }
+        bool MoveCamera(const RE::NiPoint3& delta, const CameraNodes& expected)
+        {
+            CameraNodes current;
+            if (!CameraPolicy::SafeDelta(delta) || !ResolveCamera(current) ||
+                current.origin.get() != expected.origin.get() || current.hmd.get() != expected.hmd.get() ||
+                current.avatar.get() != expected.avatar.get() || current.originParent.get() != expected.originParent.get() ||
+                current.avatarParent.get() != expected.avatarParent.get()) return false;
+            auto* origin = current.origin.get();
+            // A replaced origin belongs to its new owner. Do not reapply an old
+            // offset or overwrite that owner's position with a stale snapshot.
+            if (room && (room.get() != origin || origin->local.translate.GetSquaredDistance(lastLocal) >= 0.0001F)) return false;
+            const auto localDelta = CameraPolicy::LocalDelta(origin->parent->world, delta);
+            const auto nextManual = manualWorld + delta;
+            if (!CameraPolicy::SafeDelta(nextManual) || !Finite(localDelta) ||
+                !Finite(origin->local.translate + localDelta)) return false;
+            room = current.origin;
+            offset += localDelta; manualWorld = nextManual;
+            lastLocal = origin->local.translate + localDelta;
+            origin->local.translate = lastLocal;
+            RE::NiUpdateData update{0, RE::NiUpdateData::Flag::kDirty};
+            origin->Update(update);
+            cameraMoves.fetch_add(1);
+            return true;
         }
         bool Update(bool entering)
         {
@@ -73,7 +133,7 @@ namespace SKEE::FaceView
             }
             // Fixed normal-view anchor, NOT the current tracked HMD position:
             // subtracting that every pulse would cancel real head movement.
-            auto delta = anchorHead + direction*distance - anchorHmd;
+            auto delta = anchorHead + direction*distance - anchorHmd + manualWorld;
             if (!Finite(delta) || delta.Length() > 2000) return false;
             offset = origin->parent->world.rotate.Transpose()*delta/origin->parent->world.scale;
             room.reset(origin);
@@ -97,6 +157,10 @@ namespace SKEE::FaceView
                     args.retVal->SetMember("anchorRefreshes",RE::GFxValue{static_cast<double>(anchorRefreshes.load())});
                     args.retVal->SetMember("originReplacements",RE::GFxValue{static_cast<double>(originReplacements.load())});
                     args.retVal->SetMember("updates",RE::GFxValue{static_cast<double>(updates.load())});
+                    args.retVal->SetMember("cameraReads",RE::GFxValue{static_cast<double>(cameraReads.load())});
+                    args.retVal->SetMember("cameraMoves",RE::GFxValue{static_cast<double>(cameraMoves.load())});
+                    args.retVal->SetMember("cameraRejected",RE::GFxValue{static_cast<double>(cameraRejected.load())});
+                    args.retVal->SetMember("cameraCancelled",RE::GFxValue{static_cast<double>(cameraCancelled.load())});
                     return;
                 }
                 if (operation == 0 && args.retVal) args.retVal->SetNumber(Current());
@@ -113,6 +177,36 @@ namespace SKEE::FaceView
       eyeHeight = std::isfinite(requestedHeight) && requestedHeight >= -20 && requestedHeight <= 30 ? requestedHeight : 5; }
     bool Supported() { return enabled && REL::Module::IsVR(); }
     unsigned Current() { return view.load(); } // 0 normal, 1 face, 2 unavailable
+    bool GetCameraTransform(RE::NiPoint3& position, RE::NiMatrix3& rotation)
+    {
+        CameraNodes nodes;
+        if (!ResolveCamera(nodes)) return false;
+        position = CameraPolicy::LocalPoint(nodes.frame, nodes.hmd->world.translate);
+        rotation = nodes.frame.rotate.Transpose() * nodes.hmd->world.rotate;
+        cameraReads.fetch_add(1);
+        return Finite(position);
+    }
+    bool RequestCameraPosition(const RE::NiPoint3& position)
+    {
+        CameraNodes nodes;
+        if (!Finite(position) || !ResolveCamera(nodes)) return false;
+        const auto current = CameraPolicy::LocalPoint(nodes.frame, nodes.hmd->world.translate);
+        // Capture an input delta, not an absolute future HMD pose: legitimate
+        // head movement while the task is queued must remain intact.
+        const auto delta = CameraPolicy::WorldDelta(nodes.frame, position-current);
+        if (!CameraPolicy::SafeDelta(delta)) return false;
+        auto* tasks = SKSE::GetTaskInterface();
+        if (!tasks) return false;
+        const auto session = generation.load();
+        try {
+            tasks->AddTask([delta, nodes, session] {
+                if (generation.load() != session) { cameraCancelled.fetch_add(1); return; }
+                if (!MoveCamera(delta, nodes) && cameraRejected.fetch_add(1) == 0)
+                    SKSE::log::warn("RaceMenu VR camera move rejected: tracking origin changed or unavailable");
+            });
+        } catch (...) { return false; }
+        return true;
+    }
     void Restore() { generation.fetch_add(1); RemoveOffset(); view.store(0); }
     bool Request(unsigned requested)
     {

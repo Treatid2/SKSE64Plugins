@@ -21,6 +21,7 @@ Baseline: accepted development package 0.1.53, native 0.5.0.63.
 - [x] Native exact reconstruction and fail-closed parser tests qualified (0.1.54 candidate); both private input files unchanged.
 - [ ] Runtime file adapter qualified live with original BSA only (no generated SWF).
 - [ ] Menu reopen/cache, unrelated menus, Filter/Name and PNG regression checks for this new route.
+- [ ] VR Camera-tab position/movement, Face View interaction, close/reopen cleanup and Sculpt checks with the repaired camera and shader callbacks.
 - [ ] Wrong-version/missing-patch refusal checked through the deployed entry point.
 - [ ] Recipient/account confirmation and Nexus DP allocation to Expired.
 - [ ] Public source/tag/archive and exact source link in Nexus/download README.

@@ -7,6 +7,8 @@
 
 #include "ScaleformCharGenFunctions.h"
 #include "CharacterNameUpdate.h"
+#include "RaceSexMenuFaceView.h"
+#include "RaceSexCameraPolicy.h"
 #include "ScaleformUtils.h"
 
 #include "FaceMorphInterface.h"
@@ -952,16 +954,42 @@ void SKSEScaleform_SetPlayerRotation::Call(RE::GFxFunctionHandler::Params& a_par
 	}
 }
 
+namespace
+{
+    RE::NiPointer<RE::NiNode> FlatRaceSexCamera()
+    {
+        // This helper must only be called by the non-VR branch. Keep the menu
+        // alive while acquiring an owning reference to its camera node.
+        if (REL::Module::IsVR()) return {};
+        auto* ui = RE::UI::GetSingleton();
+        auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+        return menu ? menu->GetRuntimeData().camera.cameraRoot : RE::NiPointer<RE::NiNode>{};
+    }
+    bool RaceSexCameraTransform(RE::NiPoint3& position, RE::NiMatrix3& rotation)
+    {
+        return SKEE::CameraPolicy::Select(REL::Module::IsVR(),
+            [&] { return SKEE::FaceView::GetCameraTransform(position, rotation); },
+            [&] {
+                auto camera = FlatRaceSexCamera();
+                if (!camera || !SKEE::CameraPolicy::Valid(camera->local)) return false;
+                position = camera->local.translate; rotation = camera->local.rotate;
+                return true;
+            });
+    }
+}
+
 void SKSEScaleform_GetRaceSexCameraRot::Call(RE::GFxFunctionHandler::Params& a_params)
 {
-	RE::RaceSexMenu * raceMenu = RE::UI::GetSingleton()->GetMenu<RE::RaceSexMenu>().get();
-	if(raceMenu) {
-		RE::NiNode * raceCamera = raceMenu->camera.cameraRoot.get();
+    if (!a_params.retVal || !a_params.movie) return;
+    a_params.retVal->SetUndefined();
+    RE::NiPoint3 position;
+    RE::NiMatrix3 rotation;
+	if (RaceSexCameraTransform(position, rotation)) {
 		a_params.movie->CreateArray(a_params.retVal);
 		for(std::uint32_t i = 0; i < 3 * 3; i++)
 		{
 			RE::GFxValue index{};
-			index.SetNumber(((float*)raceCamera->local.rotate.entry)[i]);
+			index.SetNumber(rotation.entry[i / 3][i % 3]);
 			a_params.retVal->PushBack(index);
 		}
 	}
@@ -969,47 +997,56 @@ void SKSEScaleform_GetRaceSexCameraRot::Call(RE::GFxFunctionHandler::Params& a_p
 
 void SKSEScaleform_GetRaceSexCameraPos::Call(RE::GFxFunctionHandler::Params& a_params)
 {
-	RE::RaceSexMenu * raceMenu = RE::UI::GetSingleton()->GetMenu<RE::RaceSexMenu>().get();
-	if(raceMenu) {
-		RE::NiNode * raceCamera = raceMenu->camera.cameraRoot.get();
+    if (!a_params.retVal || !a_params.movie) return;
+    a_params.retVal->SetUndefined();
+    RE::NiPoint3 position;
+    RE::NiMatrix3 rotation;
+	if (RaceSexCameraTransform(position, rotation)) {
 		a_params.movie->CreateObject(a_params.retVal);
 		RE::GFxValue x{};
-		x.SetNumber(raceCamera->local.translate.x);
+		x.SetNumber(position.x);
 		a_params.retVal->SetMember("x", x);
 		RE::GFxValue y{};
-		y.SetNumber(raceCamera->local.translate.y);
+		y.SetNumber(position.y);
 		a_params.retVal->SetMember("y", y);
 		RE::GFxValue z{};
-		z.SetNumber(raceCamera->local.translate.z);
+		z.SetNumber(position.z);
 		a_params.retVal->SetMember("z", z);
 	}
 }
 
 void SKSEScaleform_SetRaceSexCameraPos::Call(RE::GFxFunctionHandler::Params& a_params)
 {
-	assert(a_params.argCount >= 1);
-	assert(a_params.args[0].GetType() == RE::GFxValue::ValueType::kObject);
-
-	RE::RaceSexMenu * raceMenu = RE::UI::GetSingleton()->GetMenu<RE::RaceSexMenu>().get();
-	if(raceMenu) {
-		RE::NiNode * raceCamera = raceMenu->camera.cameraRoot.get();
-
-		RE::GFxValue val{};
-		a_params.args[0].GetMember("x", &val);
-		if(val.GetType() == RE::GFxValue::ValueType::kNumber)
-			raceCamera->local.translate.x = val.GetNumber();
-
-		a_params.args[0].GetMember("y", &val);
-		if(val.GetType() == RE::GFxValue::ValueType::kNumber)
-			raceCamera->local.translate.y = val.GetNumber();
-
-		a_params.args[0].GetMember("z", &val);
-		if(val.GetType() == RE::GFxValue::ValueType::kNumber)
-			raceCamera->local.translate.z = val.GetNumber();
-
-		RE::NiUpdateData ctx;
-		raceCamera->UpdateWorldData(&ctx);
-	}
+    if (a_params.retVal) a_params.retVal->SetBoolean(false);
+    if (a_params.argCount < 1 || !a_params.args || !a_params.args[0].IsObject()) return;
+    RE::NiPoint3 position;
+    RE::NiMatrix3 rotation;
+    if (!RaceSexCameraTransform(position, rotation)) return;
+    float* components[]{&position.x, &position.y, &position.z};
+    constexpr const char* names[]{"x", "y", "z"};
+    bool changed = false;
+    // Preserve omitted coordinates, but validate every supplied component
+    // before committing any change (including doubles overflowing float).
+    for (unsigned i = 0; i < 3; ++i) {
+        RE::GFxValue value;
+        if (!a_params.args[0].GetMember(names[i], &value)) continue;
+        if (!value.IsNumber() || !std::isfinite(value.GetNumber())) return;
+        *components[i] = static_cast<float>(value.GetNumber());
+        if (!std::isfinite(*components[i])) return;
+        changed = true;
+    }
+    if (!changed) return;
+    const bool accepted = SKEE::CameraPolicy::Select(REL::Module::IsVR(),
+        [&] { return SKEE::FaceView::RequestCameraPosition(position); },
+        [&] {
+            auto camera = FlatRaceSexCamera();
+            if (!camera) return false;
+            camera->local.translate = position;
+            RE::NiUpdateData ctx{0, RE::NiUpdateData::Flag::kDirty};
+            camera->UpdateWorldData(&ctx);
+            return true;
+        });
+    if (a_params.retVal) a_params.retVal->SetBoolean(accepted);
 }
 
 void SKSEScaleform_CreateMorphEditor::Call(RE::GFxFunctionHandler::Params& a_params)
