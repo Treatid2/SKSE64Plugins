@@ -43,9 +43,14 @@ workable. The public asset recipe reproduces the exact accepted movie SHA-256
 `E68FCBB62E26271FBD925761DFB77A194AB9856F13F703EA8BFF975DDDE24FC2`.
 This is offline equivalence, not a new live test.
 
-Before calling this merge/release-ready: build from a clean public-source
-checkout, confirm all generated source dependencies/third-party notices,
-recheck AE regression and native consumer ABI/lifecycle, and run broader
+The clean public-source checkout at `caeedf0` now compiles for VR Release,
+and the native UTF-8 keyboard policy test passes. No LNK/unresolved-symbol
+diagnostics were found in the retained build logs. Dependency licence texts
+are included in the asset-free staging recipe. See
+`docs/release/PREPARATION-EVIDENCE.md` for hashes and boundaries.
+
+Before calling this merge/release-ready: rebuild/qualify the final immutable
+release tag, recheck AE regression and native consumer ABI/lifecycle, and run broader
 SteamVR text/modal/reopen qualification. Upstream's existing
 `/FORCE:UNRESOLVED` linker setting is inherited; audit actual unresolved-symbol
 diagnostics rather than treating forced-link success as proof of validity.
