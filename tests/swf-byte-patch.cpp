@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "SwfBytePatch.h"
+#include "RaceSexMenuSwfFailurePolicy.h"
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -13,6 +14,16 @@ void U32(Bytes& bytes, std::size_t at, std::uint32_t n) {
 }
 template<class F> void Rejected(F f) {
     bool caught{}; try { f(); } catch(const std::exception&) { caught=true; }
+    Require(caught);
+}
+template<class F> void InputRejected(F f) {
+    bool caught{}; try { f(); } catch(const IncompatibleSource&) { caught=true; }
+    Require(caught);
+}
+template<class F> void OtherRejected(F f) {
+    bool caught{};
+    try { f(); } catch(const IncompatibleSource&) { throw std::runtime_error("Incorrectly blamed original SWF"); }
+    catch(const std::exception&) { caught=true; }
     Require(caught);
 }
 Bytes Read(const char* path) {
@@ -52,6 +63,23 @@ int main(int argc, char** argv) try {
     for (auto at : {24,56,88}) std::copy(hash.begin(),hash.end(),patch.begin()+at);
     patch[120]=0; U32(patch,121,0); U32(patch,125,20);
     Require(Apply(source,patch)==source);
+    auto wrongSource=source; wrongSource.push_back(0);
+    InputRejected([&]{Apply(wrongSource,patch);});
+    wrongSource=source; wrongSource.back()^=1;
+    InputRejected([&]{Apply(wrongSource,patch);});
+    auto wrongCanonical=patch; wrongCanonical[56]^=1;
+    InputRejected([&]{Apply(source,wrongCanonical);});
+    auto wrongOutput=patch; wrongOutput[88]^=1;
+    OtherRejected([&]{Apply(source,wrongOutput);});
+    OtherRejected([&]{ApplyRelease(source,patch);});
+    using namespace SKEE::RaceSexMenuSwfPatch;
+    const std::string incompatibleMessage=FailureMessage(FailureKind::IncompatibleMovie);
+    const std::string installationMessage=FailureMessage(FailureKind::Initialization);
+    Require(incompatibleMessage.find("Interface/VR/RaceSex_menu.swf")!=std::string::npos);
+    Require(incompatibleMessage.find("0.4.20.0")!=std::string::npos);
+    Require(incompatibleMessage.find("Restart Skyrim")!=std::string::npos);
+    Require(installationMessage.find("RaceMenuNGVR2.log")!=std::string::npos);
+    Require(installationMessage.find("incompatible menu file")==std::string::npos);
     for (std::size_t n=0;n<patch.size();++n) Rejected([&]{Apply(source,std::span(patch).first(n));});
     for (auto [at,n] : {std::pair{8,1U},{12,0U},{12,0xffffffffU},{16,7U},{16,0xffffffffU},
         {20,0U},{20,200001U},{121,0xffffffffU},{125,0U},{125,21U}}) {

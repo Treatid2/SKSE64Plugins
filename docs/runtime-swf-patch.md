@@ -90,6 +90,23 @@ movie, refusing an unverified pre-existing cache/fallback. A failure is logged
 in RaceMenuNGVR2.log and returns the engine's normal failed-load path. No stale generated
 file or partly patched program is exposed as a fallback.
 
+An incompatible original movie now queues one dismissible **OK** message box
+per process. It names `Interface/VR/RaceSex_menu.swf`, the required original
+RaceMenu SE **0.4.20.0**, and asks the player to disable conflicting loose
+VR layout/generated menus and restart Skyrim. A recipe/loader/installation
+failure receives a separate generic warning pointing to `RaceMenuNGVR2.log`,
+not an incorrect accusation that the original SWF is wrong. Preparation remains
+fail-closed, including after dismissing the warning. Fixes require a restart
+because the first preparation result is intentionally cached for the process.
+
+The warning is scheduled on SKSE's game-thread task queue after the menu
+constructor returns; it never captures a menu/movie pointer or exception.
+It uses Skyrim's separate MessageBoxMenu and a null callback, so **OK** does
+not run the character-creation finish/name callback. No original file is changed.
+If the task interface or message box is unavailable, the detailed log remains
+the fallback. Offline tests cover failure classification and message content;
+actual headset visibility/dismissal requires live qualification.
+
 Static evidence uses a retained immutable memory dump, not a live debugger
 attachment. Offline reconstruction and successful compilation alone do not
 establish live qualification; the corrected loading route's acceptance is

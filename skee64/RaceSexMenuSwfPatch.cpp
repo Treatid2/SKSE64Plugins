@@ -2,11 +2,13 @@
 #include "RaceSexMenuSwfPatch.h"
 #if defined(ENABLE_SKYRIM_VR)
 #include "SwfBytePatch.h"
+#include "RaceSexMenuSwfFailurePolicy.h"
 #include <RE/B/BSResourceNiBinaryStream.h>
 #include <RE/B/BSScaleformManager.h>
 #include <RE/G/GFxLoader.h>
 #include <RE/G/GMemory.h>
 #include <RE/G/GFxState.h>
+#include <RE/M/MessageBoxMenu.h>
 #include <RE/Offsets_VTABLE.h>
 #include <REL/Relocation.h>
 #include <SKSE/SKSE.h>
@@ -46,6 +48,33 @@ namespace SKEE::RaceSexMenuSwfPatch
         // the process lifetime, including asynchronous loads and menu reopens.
         SwfBytePatch::Bytes movie;
         std::atomic<std::uint64_t> served{};
+
+        void QueueFailureWarning(FailureKind kind) noexcept
+        {
+            // Prepare runs inside the menu constructor. Defer the modal until
+            // it returns, on SKSE's game-thread task queue, not the loader thread.
+            // Capture only the enum: no dying menu/movie or exception reference.
+            // Called solely inside preparation's call_once, so no reopen spam.
+            try {
+                if (auto* tasks = SKSE::GetTaskInterface()) {
+                    tasks->AddTask([kind] {
+                        try {
+                            // A plain OK callback cannot finish/name the player.
+                            if (!RE::MessageBoxMenu::Create(FailureMessage(kind), nullptr, 0, 4, 10, "OK"))
+                                SKSE::log::error("RaceMenu SWF failure warning: message box creation declined");
+                        } catch (const std::exception& error) {
+                            SKSE::log::error("RaceMenu SWF failure warning: {}", error.what());
+                        } catch (...) {
+                            SKSE::log::error("RaceMenu SWF failure warning: unknown display failure");
+                        }
+                    });
+                } else {
+                    SKSE::log::error("RaceMenu SWF failure warning: SKSE task interface unavailable");
+                }
+            } catch (...) {
+                SKSE::log::error("RaceMenu SWF failure warning: could not queue message box");
+            }
+        }
 
         bool IsMovie(const char* path)
         {
@@ -145,8 +174,13 @@ namespace SKEE::RaceSexMenuSwfPatch
     {
         std::call_once(preparation,[&] {
             try { Initialize(manager); }
+            catch (const SwfBytePatch::IncompatibleSource& error) {
+                SKSE::log::error("RaceMenu runtime SWF patch FAILED: {}. Install original RaceMenu SE 0.4.20.0; disable loose VR layout/generated SWFs. Original files were not changed.",error.what());
+                QueueFailureWarning(FailureKind::IncompatibleMovie);
+            }
             catch (const std::exception& error) {
                 SKSE::log::error("RaceMenu runtime SWF patch FAILED: {}. Install original RaceMenu SE 0.4.20.0 and matching add-on; disable loose VR layout/generated SWFs. Original files were not changed.",error.what());
+                QueueFailureWarning(FailureKind::Initialization);
             }
         });
         return ready;

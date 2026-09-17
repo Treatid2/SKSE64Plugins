@@ -29,11 +29,13 @@ namespace SKEE::SwfBytePatch
             return bytes[at] | (std::uint32_t(bytes[at+1]) << 8) |
                 (std::uint32_t(bytes[at+2]) << 16) | (std::uint32_t(bytes[at+3]) << 24);
         }
-        void Verify(std::span<const std::uint8_t> bytes, std::span<const std::uint8_t> expected, const char* error)
+        void Verify(std::span<const std::uint8_t> bytes, std::span<const std::uint8_t> expected, const char* error, bool sourceMismatch = false)
         {
             const auto actual = Sha256(bytes);
-            if (expected.size() != actual.size() || !std::equal(actual.begin(), actual.end(), expected.begin()))
+            if (expected.size() != actual.size() || !std::equal(actual.begin(), actual.end(), expected.begin())) {
+                if (sourceMismatch) throw IncompatibleSource(error);
                 throw std::runtime_error(error);
+            }
         }
     }
 
@@ -95,11 +97,11 @@ namespace SKEE::SwfBytePatch
         const auto sourceLength = U32(patch,12), outputLength = U32(patch,16), count = U32(patch,20);
         if (sourceLength < 8 || sourceLength > kLimit || outputLength < 8 || outputLength > kLimit ||
             !count || count > 200000) throw std::runtime_error("Invalid patch limits");
-        if (sourceFile.size() != U32(patch,8)) throw std::runtime_error("Original file size mismatch");
-        Verify(sourceFile, patch.subspan(24,32), "Original file hash mismatch");
+        if (sourceFile.size() != U32(patch,8)) throw IncompatibleSource("Original file size mismatch");
+        Verify(sourceFile, patch.subspan(24,32), "Original file hash mismatch", true);
         const auto source = Canonical(sourceFile);
-        if (source.size() != sourceLength) throw std::runtime_error("Original canonical size mismatch");
-        Verify(source, patch.subspan(56,32), "Original canonical hash mismatch");
+        if (source.size() != sourceLength) throw IncompatibleSource("Original canonical size mismatch");
+        Verify(source, patch.subspan(56,32), "Original canonical hash mismatch", true);
         Bytes output;
         output.reserve(outputLength);
         std::size_t p = kHeader;
