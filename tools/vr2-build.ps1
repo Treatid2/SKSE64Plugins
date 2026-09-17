@@ -118,7 +118,9 @@ try {
     New-Item -ItemType Directory -Force -Path $commonLibStage, $buildRoot, $toolchainRoot | Out-Null
     # Export the pinned commit, never an unrecorded dirty dependency worktree.
     $commonLibArchive = Join-Path $workPath 'commonlib-source.tar'
-    & git -C $commonLibSource archive --format=tar "--output=$commonLibArchive" HEAD
+    # Exclude repository-only symlinked agent metadata, which Windows tar cannot
+    # materialise without symlink privileges. All build sources/notices remain.
+    & git -C $commonLibSource archive --format=tar "--output=$commonLibArchive" HEAD CMakeLists.txt CMakePresets.json CommonLibSSE.natvis COPYING.txt EXCEPTIONS.md README.md cmake include src extern res licenses tests vcpkg.json vcpkg-configuration.json
     if ($LASTEXITCODE -ne 0) { throw 'CommonLib pinned source export failed.' }
     & tar.exe -xf $commonLibArchive -C $commonLibStage
     if ($LASTEXITCODE -ne 0) { throw 'CommonLib pinned source extraction failed.' }

@@ -1,5 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+*.patch whitespace=-blank-at-eol,-space-before-tab
 
 # Custom for Visual Studio
 *.cs     diff=csharp
