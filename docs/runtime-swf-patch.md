@@ -77,16 +77,30 @@ It allocates Skyrim's own 0x30-byte GMemoryFile on the GFx heap and calls the
 statically qualified engine constructor. The engine retains/release-destroys
 each file normally; its backing movie bytes remain resident for the process.
 
-The original opener state/vtable/function and constructor/opener code signatures
-must match; an existing third-party opener hook is refused rather than replaced.
+The vanilla opener function and constructor/opener code signatures must match.
+The active opener may be vanilla or the qualified SKSE VR 2.0.12
+`SKSEFileLoader` wrapper. SKSE's wrapper delegates directly to the vanilla
+function, so the adapter hooks the active wrapper's OpenFileEx slot, retaining
+its previous function for all unrelated URLs. The wrapper's four vtable entries
+and 192-byte loaded-code SHA-256 are checked before installation; unknown or
+modified openers are refused rather than overwritten. This supports the
+currently qualified SKSE build, not arbitrary future wrapper versions.
 The constructor load hook checks that the memory adapter actually served the
 movie, refusing an unverified pre-existing cache/fallback. A failure is logged
-in skee64.log and returns the engine's normal failed-load path. No stale generated
+in RaceMenuNGVR2.log and returns the engine's normal failed-load path. No stale generated
 file or partly patched program is exposed as a fallback.
 
 Static evidence uses a retained immutable memory dump, not a live debugger
 attachment. **This new runtime adapter still requires live qualification**;
 offline reconstruction and successful compilation do not establish that.
+
+The first 0.1.54 live test rejected SKSE's normal wrapper before reconstruction,
+causing character creation to be skipped. Read-only external inspection
+(QUERY_LIMITED_INFORMATION | VM_READ, without debugger attachment, thread
+suspension or writes) established that the native opener was unchanged and the
+active type-10 opener belonged to `sksevr_1_4_15.dll`, RTTI `SKSEFileLoader`.
+0.1.55 / native 0.5.0.65 corrects this specific adapter routing error; live
+acceptance remains required. The patch payload itself is unchanged.
 
 ## Offline qualification (17 September 2026)
 
