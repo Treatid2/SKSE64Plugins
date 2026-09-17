@@ -1,5 +1,43 @@
 # Building RaceMenu VR 2
 
+## Public source release
+
+The 0.1.58 VR beta and pinned source bundle are published at
+https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.58 .
+The binary was built from commit
+`6d44b35f7a4bb17a1fb955a9378021d27657477d`, native version `0.5.0.68`.
+The source bundle includes CommonLibSSE-NG and OpenVR at the pinned revisions,
+with both focused CommonLib corrections already applied. Its
+`SOURCE-RELEASE.md` gives portable build instructions: no Codex, managed
+scratch tool, MO2, original Nexus assets or JPEXS is needed to compile the DLL.
+
+In a Windows x64 MSVC native-tools shell with Windows SDK/`fxc`, Git, Ninja,
+CMake >=3.21 and bootstrapped vcpkg, use explicit writable paths outside the
+extracted source tree:
+
+```powershell
+$env:VCPKG_ROOT = 'C:/development/vcpkg'
+$env:SKEE_BUILD_ROOT = 'C:/development/racemenu-build'
+cmake --preset release-msvc-vcpkg-vr `
+  -DSKEE_VR2_PACKAGE_VERSION=0.1.58 -DSKEE_NATIVE_PLUGIN_VERSION=0.5.0.68
+cmake --build --preset release-msvc-vcpkg-vr --parallel 4
+```
+
+`vcpkg.json` pins the dependency baseline and the ports identify upstream
+source locations, hashes and licenses. See `THIRD_PARTY_NOTICES.md`.
+For a recursive Git checkout, apply the two `evidence/` CommonLib patches to
+a separate copy of the pinned dependency and pass its path as
+`-DSKEE_COMMONLIB_SOURCE_DIR=...` at configure time. Do not apply those patches
+again to the already-patched source bundle.
+
+This is a VR beta, not complete cross-runtime qualification. The clean build
+and keyboard/camera/SWF policy tests and all 23 production shader compiler
+checks pass. The final version-only rebuild has not had a separate headset
+installation; broader Sculpt/SteamVR/SE/AE checks and independent review remain
+outstanding. Camera-tab visible movement is ineffective in the tested session.
+
+## Maintainer managed build
+
 The supported Windows build wrapper is `tools/vr2-build.ps1`. It acquires a
 managed `Kind=build` allocation through `CODEX_SCRATCH_TOOL`, stages the pinned
 CommonLibSSE-NG source and its focused latent-function correction there, builds
@@ -75,8 +113,9 @@ pwsh -NoProfile -File .\tools\vr2-build.ps1 `
 Do not run CMake or the lower-level `build.ps1` in a way that creates
 `build`, `bin`, `obj`, or `out` trees in this checkout. Do not use `--install`
 for the VR safe-load build. A successful VR link proves only compilation; the
-DLL must not be installed or distributed until runtime hook qualification and
-the release acceptance tests are complete.
+DLL must not be described as fully runtime-qualified merely because it links.
+The published VR beta discloses its accepted live checks and outstanding
+regressions; see the immutable release verification and release notes.
 
 ## Pinned inputs
 
