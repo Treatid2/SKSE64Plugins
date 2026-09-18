@@ -1,4 +1,4 @@
-# RaceMenu VR 2 — VR beta 0.1.79
+# RaceMenu VR 2 — VR beta 0.1.80
 
 **An add-on to Expired's RaceMenu, adapted for Skyrim VR.**
 
@@ -8,6 +8,10 @@ redistribute the original Nexus assets. Treatid2 maintains this VR fork.
 
 ## What it adds
 
+- Correct VR inventory-preview layout and bounded tint lookup, addressing an
+  identified inventory armour-preview crash. Character creation and varied
+  armour/clothing previews passed the development headset test. This does not
+  establish that every reported random crash has been resolved.
 - Working Filter and Name virtual keyboards, with accepted names surviving
   character-creation exit and save/load. No second naming prompt on exit.
 - Stable face view and a steady, player-facing menu that reanchors when you
@@ -65,9 +69,9 @@ user artwork. This is not an official release or implied endorsement by Expired.
 Source fork: https://github.com/Treatid2/SKSE64Plugins
 
 Corresponding source:
-https://github.com/Treatid2/SKSE64Plugins/tree/racemenu-vr2-v0.1.79
+https://github.com/Treatid2/SKSE64Plugins/tree/racemenu-vr2-v0.1.80
 Versioned downloads and SHA-256 identities:
-https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.79
+https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.80
 
 ## Qualification and limitations
 

@@ -23,6 +23,7 @@
 #include <RE/G/GFxMovieView.h>
 #include <RE/G/GFxValue.h>
 #include <RE/I/Inventory3DManager.h>
+#include "InventoryPreviewPolicy.h"
 #include <RE/N/NiAVObject.h>
 #include <RE/N/NiGeometryData.h>
 #include <RE/N/NiBooleanExtraData.h>
@@ -1289,7 +1290,7 @@ void UpdateModelHair_Hooked(RE::NiAVObject * object, RE::NiColorA *& color)
 
 void SetInventoryItemModel_Hooked(RE::Inventory3DManager * inventoryManager, RE::TESForm * baseForm, RE::ExtraDataList * baseExtraList)
 {
-	if (baseForm && baseForm->IsArmor()) {
+	if (inventoryManager && baseForm && baseForm->IsArmor()) {
 		RE::TESObjectARMO* armor = baseForm ? baseForm->As<RE::TESObjectARMO>() : nullptr;
 		if (armor) {
 			std::uint32_t rankId = 0; // Rank 0 will reset if applicable
@@ -1301,14 +1302,17 @@ void SetInventoryItemModel_Hooked(RE::Inventory3DManager * inventoryManager, RE:
 			}
 
 			RE::NiNode * rootNode = nullptr;
-			auto& loadedModels = inventoryManager->GetRuntimeData().loadedModels;
-			for (std::size_t i = 0; i < loadedModels.size(); ++i)
+			auto findRoot = [&](auto& loadedModels) {
+				const auto* model = SKEE::InventoryPreview::FindLoadedModel(loadedModels, baseForm);
+				return model && model->spModel ? model->spModel->AsNode() : nullptr;
+			};
+#if defined(ENABLE_SKYRIM_VR)
+			if (REL::Module::IsVR()) {
+				rootNode = findRoot(inventoryManager->GetVRRuntimeData().loadedModels);
+			} else
+#endif
 			{
-				if (loadedModels[i].itemBase == baseForm)
-				{
-					rootNode = loadedModels[i].spModel->AsNode();
-					break;
-				}
+				rootNode = findRoot(inventoryManager->GetRuntimeData().loadedModels);
 			}
 
 			if (rootNode) {
@@ -1322,7 +1326,7 @@ void SetInventoryItemModel_Hooked(RE::Inventory3DManager * inventoryManager, RE:
 
 void SetNewInventoryItemModel_Hooked(RE::Inventory3DManager * inventoryManager, RE::TESForm * form1, RE::TESForm * form2, RE::NiNode ** node)
 {
-	if (form1 && form1->IsArmor() && node && *node) {
+	if (inventoryManager && form1 && form1->IsArmor() && node && *node) {
 		RE::TESObjectARMO* armor = form1 ? form1->As<RE::TESObjectARMO>() : nullptr;
 		if (armor) {
 			RE::ExtraDataList& baseExtraList = inventoryManager->originalExtra;

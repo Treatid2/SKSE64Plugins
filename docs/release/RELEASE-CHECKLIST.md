@@ -1,6 +1,6 @@
 # VR beta release checklist
 
-Current beta: headset-accepted package 0.1.79, native 0.5.0.89.
+Current beta: headset-accepted package 0.1.80, native 0.5.0.90.
 Historical checks below retain their original source/build scope where stated.
 
 - [x] OCU human validation: layout, face view, picker, name/filter, name save/load.
@@ -13,7 +13,8 @@ Historical checks below retain their original source/build scope where stated.
 - [x] Treatid2 source branch pushed; draft Expired upstream PR #66 opened.
 - [x] Clean public-source VR checkout compiles (caeedf0); native keyboard policy test passes.
 - [x] Dependency licence texts copied from pinned build inputs into the add-on.
-- [x] Retain exact headset-tested 0.1.79 DLL/patch; refresh documentation only.
+- [x] Retain exact headset-tested 0.1.80 DLL and unchanged 0.1.79 menu patch; refresh documentation only.
+- [x] Inventory-preview layout/bounds regression tests and human armour/clothing previews.
 - [ ] Independently rebuild the final immutable source tag and qualify that rebuild.
 - [ ] Broader SteamVR normal/face, Filter/Name, picker, close/reopen checks.
 - [ ] AE regression and native consumer ABI/lifecycle checks for final source.

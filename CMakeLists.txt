@@ -303,6 +303,15 @@ if(DEFINED ENV{Skyrim64Path})
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    add_executable(vr2_inventory_preview_tests tests/inventory-preview.cpp)
+    target_include_directories(vr2_inventory_preview_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    target_link_libraries(vr2_inventory_preview_tests PRIVATE CommonLibSSE xbyak::xbyak)
+    target_compile_definitions(vr2_inventory_preview_tests PRIVATE XBYAK_NO_OP_NAMES)
+    target_precompile_headers(vr2_inventory_preview_tests PRIVATE skee64/pch.h)
+    add_custom_command(TARGET vr2_inventory_preview_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_inventory_preview_tests>"
+        COMMENT "Checking VR inventory preview stride, count location and bounded lookup")
+    add_dependencies(skee64 vr2_inventory_preview_tests)
     add_executable(vr2_sculpt_trace_tests tests/sculpt-trace.cpp)
     target_include_directories(vr2_sculpt_trace_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
     add_custom_command(TARGET vr2_sculpt_trace_tests POST_BUILD

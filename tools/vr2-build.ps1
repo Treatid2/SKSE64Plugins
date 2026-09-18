@@ -183,6 +183,11 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'CommonLib VR RaceSexMenu layout correction no longer applies.' }
         & git apply $runtimePatch
         if ($LASTEXITCODE -ne 0) { throw 'CommonLib VR RaceSexMenu layout correction failed.' }
+        $inventoryPatch = Join-Path $projectPath 'evidence\commonlibsse-ng-inventory-vr.patch'
+        & git apply --check $inventoryPatch
+        if ($LASTEXITCODE -ne 0) { throw 'CommonLib VR inventory layout correction no longer applies.' }
+        & git apply $inventoryPatch
+        if ($LASTEXITCODE -ne 0) { throw 'CommonLib VR inventory layout correction failed.' }
     } finally {
         Pop-Location
     }

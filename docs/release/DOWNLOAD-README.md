@@ -1,4 +1,4 @@
-# RaceMenu VR 2 — VR beta 0.1.79
+# RaceMenu VR 2 — VR beta 0.1.80
 
 Read [INSTALLATION.md](INSTALLATION.md) before installing. This download
 contains no original RaceMenu assets. The exact original menu is verified and
@@ -17,16 +17,21 @@ The tested OCU wand route uses OCU's own pointer system.
 Treatid2 source fork: https://github.com/Treatid2/SKSE64Plugins
 
 Corresponding source (including build scripts, dependency pins and patches):
-https://github.com/Treatid2/SKSE64Plugins/tree/racemenu-vr2-v0.1.79
+https://github.com/Treatid2/SKSE64Plugins/tree/racemenu-vr2-v0.1.80
 Release downloads and SHA-256 identities:
-https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.79
+https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.80
 
-This update adds a VR Sculpt workspace: controls, History and head parts in
+This update corrects an invalid-memory read in the inventory-preview tint
+hook caused by using the flat-screen layout in VR. Character creation and
+varied armour/clothing previews passed the development headset test; this is
+not a guarantee that all random crashes are resolved. See RELEASE-NOTES-0.1.80.md.
+
+The VR Sculpt workspace retains controls, History and head parts in
 one left column, a right-hand sculpt canvas, independent Face View and a larger
 canvas toggle. Turn left/Centre view/Turn right adjust viewing direction in
 5-degree steps, limited to +/-60 degrees, without moving the menu. Rotation
 persists through Face/Normal view changes. Buttons and transitions are
-headset-tested. See RELEASE-NOTES-0.1.79.md for changes and test boundaries.
+headset-tested during the preceding development cycle.
 
 Sculpt deformation, History undo/redo, head export/clear/import and preset
 save/change/load have passed human tests during this development cycle.

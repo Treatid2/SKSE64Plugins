@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory)][string]$StageRoot,
     [string]$ExpectedPackageVersion = '0.1.54-runtime-swf-patch',
     [string]$ExpectedNativeVersion = '0.5.0.64',
+    [string]$ReleaseNotesRelative = 'docs/release/RELEASE-NOTES-0.1.80.md',
+    [string]$ReadmeRelative = 'docs/release/DOWNLOAD-README.md',
     [ValidateSet('runtime-patch-candidate-not-live-qualified-not-public-release','vr-beta')]
     [string]$QualificationStatus = 'runtime-patch-candidate-not-live-qualified-not-public-release'
 )
@@ -58,10 +60,10 @@ New-Item -ItemType Directory -Force -Path $resourceDir | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot 'skee64/IPluginInterface.h') -Destination $resourceDir
 $docs = Join-Path $stage 'Data/docs/RaceMenuVR2'
 New-Item -ItemType Directory -Force -Path $docs | Out-Null
-foreach ($file in @('LICENSE','THIRD_PARTY_NOTICES.md','docs/release/INSTALLATION.md','docs/release/RELEASE-CHECKLIST.md','docs/release/RELEASE-NOTES-0.1.79.md','docs/menu-customization.md','docs/menu-appearance.md','docs/runtime-swf-patch.md','docs/vr2/sculpt-diagnostics.md')) {
+foreach ($file in @('LICENSE','THIRD_PARTY_NOTICES.md','docs/release/INSTALLATION.md','docs/release/RELEASE-CHECKLIST.md',$ReleaseNotesRelative,'docs/menu-customization.md','docs/menu-appearance.md','docs/runtime-swf-patch.md','docs/vr2/sculpt-diagnostics.md')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination $docs
 }
-Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/release/DOWNLOAD-README.md') -Destination (Join-Path $docs 'README.md')
+Copy-Item -LiteralPath (Join-Path $projectRoot $ReadmeRelative) -Destination (Join-Path $docs 'README.md')
 $licences = Join-Path $docs 'licenses'
 New-Item -ItemType Directory -Force -Path $licences | Out-Null
 foreach ($notice in @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'packaging/licenses') -File)) {
