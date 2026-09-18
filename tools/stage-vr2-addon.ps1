@@ -32,7 +32,7 @@ function Copy-VerifiedRuntime([string]$Relative) {
 Copy-VerifiedRuntime 'Data/SKSE/Plugins/skee64.dll'
 $patchRelative = 'Data/SKSE/Plugins/RaceMenuVR2/racesex-menu.rmp'
 $patchSource = Join-Path $projectRoot 'packaging/runtime-patches/racesex-menu.rmp'
-if ((Get-FileHash -LiteralPath $patchSource).Hash -ne 'BDFA091F19B2601D1314C740361949CBD957F2CB90799A2299D78BFAFB735876' -or
+if ((Get-FileHash -LiteralPath $patchSource).Hash -ne '5D1509861875F500336FFEB30600BBE56826C193CF59AE69043BD23EC8F624B5' -or
     (Get-FileHash -LiteralPath (Join-Path $baseline $patchRelative)).Hash -ne (Get-FileHash -LiteralPath $patchSource).Hash) {
     throw 'Runtime patch is not the reviewed release payload.'
 }
@@ -58,7 +58,7 @@ New-Item -ItemType Directory -Force -Path $resourceDir | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot 'skee64/IPluginInterface.h') -Destination $resourceDir
 $docs = Join-Path $stage 'Data/docs/RaceMenuVR2'
 New-Item -ItemType Directory -Force -Path $docs | Out-Null
-foreach ($file in @('LICENSE','THIRD_PARTY_NOTICES.md','docs/release/INSTALLATION.md','docs/release/RELEASE-CHECKLIST.md','docs/menu-customization.md','docs/menu-appearance.md','docs/runtime-swf-patch.md')) {
+foreach ($file in @('LICENSE','THIRD_PARTY_NOTICES.md','docs/release/INSTALLATION.md','docs/release/RELEASE-CHECKLIST.md','docs/release/RELEASE-NOTES-0.1.79.md','docs/menu-customization.md','docs/menu-appearance.md','docs/runtime-swf-patch.md','docs/vr2/sculpt-diagnostics.md')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot $file) -Destination $docs
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/release/DOWNLOAD-README.md') -Destination (Join-Path $docs 'README.md')

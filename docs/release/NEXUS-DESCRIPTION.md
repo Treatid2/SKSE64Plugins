@@ -1,4 +1,4 @@
-# RaceMenu VR 2 — VR beta 0.1.60
+# RaceMenu VR 2 — VR beta 0.1.79
 
 **An add-on to Expired's RaceMenu, adapted for Skyrim VR.**
 
@@ -21,6 +21,14 @@ redistribute the original Nexus assets. Treatid2 maintains this VR fork.
 - Documented versioned native interfaces for other developers to extend.
 - A large on-screen installation notice if an incompatible menu overrides the
   required original; no notice with the correct original.
+- A VR Sculpt workspace with brush, History and head-part controls on the
+  left, a sculpt canvas on the right, Face View and a larger canvas toggle.
+- Working Sculpt stroke history/undo/redo and repaired head export/import.
+- Turn left, Centre view and Turn right: 5-degree viewing-direction steps,
+  limited to +/-60 degrees, leaving the menu fixed. Rotation persists through
+  Face/Normal view changes. These controls do not rotate the sculpt mesh.
+- Upright menus by default, opt-in vertical tilt and independent Sculpt angle
+  in the INI. The redundant non-VR Camera tab is removed in VR.
 
 ## Requirements and installation
 
@@ -57,12 +65,9 @@ user artwork. This is not an official release or implied endorsement by Expired.
 Source fork: https://github.com/Treatid2/SKSE64Plugins
 
 Corresponding source:
-https://github.com/Treatid2/SKSE64Plugins/tree/racemenu-vr2-v0.1.60
+https://github.com/Treatid2/SKSE64Plugins/tree/racemenu-vr2-v0.1.79
 Versioned downloads and SHA-256 identities:
-https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.60
-
-Nexus Donation Points are intended for Expired. **Confirm the Nexus allocation
-with the recipient/account settings before claiming this is configured.**
+https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.79
 
 ## Qualification and limitations
 
@@ -73,12 +78,16 @@ the user also confirmed the wrong-SWF notice,
 absence of that notice with the correct SWF, and accurate wand alignment with
 extreme INI height offsets. Default height aligns the menu centre to captured
 player eye level; height offsets are relative to that, not absolute world heights.
-This is not exhaustive coverage of all headsets, controller bindings, presets/sculpt tools,
-third-party extensions or SE/AE standalone compatibility. Back up saves.
+During this development cycle the user confirmed visible Sculpt deformation,
+History population, snapshot undo/redo, head export/clear/import and preset
+save/change/load. Hover and strokes showed no obvious performance collapse;
+this is an observation, not a measured FPS qualification. In 0.1.79 the user
+confirmed working rotation controls and persistence through Face/Normal view.
+Leaving Sculpt resets brush, History and part selection following the stock
+warning. Cross-session sculpt persistence remains unqualified. Brush/Property
+and Primary/Secondary are stock control hints, not additional mouse buttons.
 
-Camera-tab options react, but visible camera movement is not confirmed in VR.
-Use the working Face View control instead. The camera callback repair has
-native policy-test coverage and live close/reopen acceptance; that is not
-qualification of the original non-VR Camera tab. All 23 bundled shader sources
-compile through the production runtime compiler in the offline test, but full
-live sculpt/preset regression coverage is still outstanding.
+This is not exhaustive coverage of all headsets, controller bindings, sculpt
+tools, third-party extensions or SE/AE standalone compatibility. Back up saves
+and preserve/merge your custom INI on update. SteamVR Sculpt is not separately
+qualified to the same extent as the OCU development session.

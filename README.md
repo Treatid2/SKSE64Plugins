@@ -7,7 +7,8 @@ not an official Expired release and is not a standalone RaceMenu distribution.
 Features include aligned VR pointer interaction, Filter and Name keyboards,
 accepted-name persistence, steady face view, player-relative menu/picker
 placement, readable consolidated controls, aspect-preserving PNG backgrounds,
-INI colours, and versioned native character-creation/menu-extension interfaces.
+INI colours, a consolidated Sculpt workspace with larger canvas and viewpoint
+rotation, and versioned native character-creation/menu-extension interfaces.
 
 See [installation](docs/release/INSTALLATION.md),
 [configuration](docs/menu-customization.md), and
@@ -24,7 +25,8 @@ See [installation](docs/release/INSTALLATION.md),
   does not require this helper. Neither pointer provider is bundled here.
 - The runtime-patch candidate automatically transforms the exact original
   menu in memory. Players need no JPEXS, BSA extractor or generated-menu mod.
-  See the release checklist: this new loading route still needs live qualification.
+  The original-BSA loading route and close/reopen operation are live-tested.
+  See the release checklist for remaining qualification limits.
 
 The original [Skyrim LE RaceMenu page](https://www.nexusmods.com/skyrim/mods/29624)
 is credited, but its incompatible files are **not** an install prerequisite.
@@ -39,7 +41,7 @@ Native source and our patch recipes inherit the upstream GPL licence; preserve
 `LICENSE` and `THIRD_PARTY_NOTICES.md`. Original Nexus assets and user artwork
 are not relicensed or redistributed. Build instructions are in `BUILDING.md`.
 Every published binary must have an exact corresponding-source tag/archive;
-the development worktree binary is not yet a tagged public release.
+the public 0.1.79 beta retains the exact headset-tested native binary and patch.
 
 Expired6978 deserves primary credit for RaceMenu and its original assets.
 See the original mod's credits for its contributors. CommonLibSSE-NG, SKSEVR,

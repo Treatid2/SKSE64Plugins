@@ -50,6 +50,14 @@ Empty values inherit Menu Appearance; invalid/out-of-range values use zero.
 The main height does not implicitly offset the picker. The resulting surface
 still faces the captured viewer and moves its wand interaction geometry with
 it. These settings are shared with Face view and require a game restart.
+`bForceVertical` in `[Menu Profile VR Normal]` keeps the surface upright by
+default: `1` locks pitch to zero; `0` opts into viewer-facing tilt.
+It applies to both the main menu and colour picker in Normal and Face views.
+Elevation and height still move the centre, and horizontal facing toward the
+captured viewer is retained. The matching wand plane uses the same orientation.
+Missing or invalid values use upright. Opt into `0` at extreme elevations
+(e.g. +/-60 degrees), where an upright surface is harder to see. This option
+does not introduce head-following movement; restart Skyrim after changing it.
 Category selection and dynamically wrapped action buttons do not reanchor the
 surface. In 0.1.53 the stock double-rule decoration is removed from the VR
 movie (a named directly placed shape could not be moved as an AS2 MovieClip).
@@ -126,6 +134,51 @@ ownership and comfort qualification. No forced rotation or animated camera sweep
 is performed. A whole-view fade is not yet implemented.
 
 ## Remaining qualification / wishlist work
+
+### VR Sculpt workspace (0.1.73 candidate)
+
+Sculpt puts the canvas, Brush controls, History, Head Parts and action buttons
+in its own wider workspace on the menu side. The canvas is on the right,
+beside one left-hand column: Brush, History, then Head Parts. Each section is
+uniformly fitted to 280 movie units wide and at most 260, 160 and 180 units
+high respectively. This keeps their proportions and makes room for the complete
+canvas and reachable actions below both columns. `fSculptAzimuth` in VR Normal independently positions Sculpt
+(default 48 degrees left, -85..85, positive left); omitted/empty keys use 48.
+Height, elevation, distance and surface scale use the main VR menu settings;
+the menu's world anchor changes with a view transition, not each head movement.
+Brush slider rails retain the brush artwork's shorter endpoint independently
+of the regular character sliders. VR exposes Sliders, Presets and Sculpt tabs;
+the stock Camera tab is omitted in VR only.
+
+Sculpt's **Face view / Normal view** button remembers its own view for this
+menu session and restores the preceding view when leaving Sculpt. **Large
+canvas / Standard canvas** grows the canvas from 560 to 760 movie units, retaining
+a 280-unit controls column. Brush's registered slider list is uniformly doubled
+within that column, including text and hit geometry, rather than stretching
+only artwork. Original transforms are captured once so rebuilds/toggles do
+not compound the enlargement. This matches the live size the tester reports
+as much easier to click and grab. The brush category selector is doubled too;
+its fixed visible mask, rather than hidden sliding labels, determines the fit.
+The height limit uses nested two-operand AS2 comparisons so Large canvas
+cannot discard the footer's vertical space. The reflow needs a headset check.
+The complete backing frame, content and actions
+are uniformly fitted inside both dimensions of the movie's drawable area,
+independently of the hidden Sliders panel. Uniform fitting can reduce the whole
+workspace slightly in Large canvas mode. Resize is ignored during active
+painting, rotation or panning. Added text-only action buttons retain visible
+low-alpha backgrounds for ordinary GFx hit testing; their explicit click counts
+are available as `vrFaceActionCount` and `vrCanvasActionCount` on VertexEditor.
+The new actions are registered in the complete static action panel (the same
+group as Import/Export/Clear), but visually stay beside the top-row hints.
+This supports OCU's semantic targeting, which scans only Done in the hint row.
+Owned listeners are refreshed without replacing stock actions or duplicating
+callbacks when the bottom bar is rebuilt.
+These candidate layout and physical-click behaviours require a headset check
+before publication.
+
+The existing canvas pan/rotation and mesh zoom remain; this is not a separate
+movable magnifier or a higher-resolution texture. The native sculpt texture
+remains 1024 by 1024, and hit/paint coordinates remain canvas-local after scale.
 
 - Live 0.1.49 physical PNG metric/aspect verification, separately from layout.
 - Live 0.1.50 normal/face layout, modal placement, keyboard regressions, head

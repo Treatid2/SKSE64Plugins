@@ -73,6 +73,7 @@ let view=0,state=0;
 const placements=[];api.SetMenuPolarPlacement=(...args)=>{placements.push(args);state=0;return true;};
 api.GetMenuView=()=>view;api.GetMenuPolarPlacementState=()=>state;
 const polar=Object.assign({},prototype,{vrMenuProfile:{azimuth:25,elevation:5,distance:90,surfaceScale:110,pickerAzimuth:40,pickerElevation:0,pickerDistance:80,pickerSurfaceScale:100},racePanel:{ListBackground:{getBounds:()=>({xMin:0,xMax:430,yMin:70,yMax:1024})}},colorField:{_visible:false,getBounds:()=>({xMin:20,xMax:500,yMin:300,yMax:600})},localToGlobal:p=>{p.x+=10;}});
+polar.vertexEditor={enabled:false};
 polar.UpdateVRWorldPlacement();assert.deepEqual(placements.pop(),[25,5,90,110,225,547]);
 state=1;polar.UpdateVRWorldPlacement();assert.equal(placements.length,0,'steady-state poll does not move menu');
 polar.localToGlobal=p=>{p.x+=50;};
@@ -88,4 +89,10 @@ polar.colorField._visible=false;polar.UpdateVRWorldPlacement();assert.deepEqual(
 state=1;view=0;polar.UpdateVRWorldPlacement();assert.deepEqual(placements.pop(),[25,5,90,110,225,547],'return to normal reanchors once');
 state=0;polar.UpdateVRWorldPlacement();assert.equal(placements.length,1,'not-yet-ready native surface permits retry');
 placements.length=0;state=2;polar.UpdateVRWorldPlacement();assert.equal(placements.length,0,'unavailable native surface does not retry forever');
+polar.vertexEditor={enabled:true,vrLargeCanvas:false,vrWorkspaceBounds:{xMin:16,xMax:912,yMin:90,yMax:900},localToGlobal:p=>{p.x+=20;}};
+polar.UpdateVRWorldPlacement();assert.deepEqual(placements.pop(),[48,5,90,110,484,495],'Sculpt default has independent leftward angle');
+state=1;polar.UpdateVRWorldPlacement();assert.equal(placements.length,0,'steady Sculpt does not chase viewer');
+api.menuProfiles['VR Normal'].sculptAzimuth=60;polar.UpdateVRWorldPlacement();assert.equal(placements.pop()[0],60,'Sculpt angle override');
+polar.colorField._visible=true;polar.UpdateVRWorldPlacement();assert.equal(placements.pop()[0],40,'picker remains independent while Sculpt open');
+polar.colorField._visible=false;polar.vertexEditor.enabled=false;polar.UpdateVRWorldPlacement();assert.equal(placements.pop()[0],25,'exit Sculpt restores ordinary main angle');
 console.log('Wishlist adapter: stable extension controls, rebuilds, collision rejection, registered-clip layout and list sizing passed (surrogate only).');

@@ -17,12 +17,16 @@ namespace SKEE::VR
     }
     struct PolarPlacement { PolarFrame frame; std::array<float,3> offset; };
     inline PolarPlacement MakeRaisedPolarPlacement(float x, float y, float azimuth,
-                                                   float elevation, float distance, float height)
+                                                   float elevation, float distance, float height,
+                                                   bool forceVertical = true)
     {
         const auto original = MakePolarFrame(x, y, azimuth, elevation);
         const std::array<float,3> offset{original.radial[0]*distance,
                                        original.radial[1]*distance,
                                        original.radial[2]*distance+height};
+        // Placement still uses elevation/height; only surface pitch is locked.
+        // Keep yaw toward the viewer and world-up vertical, without roll.
+        if (forceVertical) return {MakePolarFrame(x,y,azimuth,0),offset};
         // A vertical offset must also tilt the surface toward its fixed viewer.
         // Preserve the exact established transform when the new setting is zero.
         if (height == 0) return {original, offset};

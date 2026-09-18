@@ -1,4 +1,5 @@
 #include "RaceSexMenuVRInput.h"
+#include "SculptTrace.h"
 
 #if defined(ENABLE_SKYRIM_VR)
 
@@ -186,10 +187,11 @@ namespace
 				"_root.RaceSexMenuBaseInstance.RaceSexPanelsInstance.colorField._visible") &&
 				pickerVisible.IsBool() && pickerVisible.GetBool();
 			const float height = SKEE::MenuConfiguration::PlacementHeight(colorPicker);
+			const bool forceVertical = SKEE::MenuConfiguration::PlacementForceVertical();
 			auto* tasks=SKSE::GetTaskInterface(); if (!tasks || g_polarQueued.exchange(true)) return;
 			g_polarState.store(0);
 			const auto generation=g_polarGeneration.load(); const auto identity=args.movie;
-			tasks->AddTask([values,u,v,generation,identity,height] {
+			tasks->AddTask([values,u,v,generation,identity,height,forceVertical] {
 				g_polarQueued.store(false);
 				auto* ui=RE::UI::GetSingleton(); auto menu=ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
 				if (generation!=g_polarGeneration.load() || !menu || menu->uiMovie.get()!=identity) return;
@@ -200,7 +202,7 @@ namespace
 				if (g_polarCaptured && (g_polarNodeIdentity.get()!=node || g_polarQuadIdentity.get()!=quad)) { g_polarState.store(2); return; }
 				if (!g_polarCaptured && !CapturePolar(node,quad,hmd)) { g_polarState.store(2); return; }
 				const auto placement=SKEE::VR::MakeRaisedPolarPlacement(g_polarForward.x,g_polarForward.y,
-					static_cast<float>(values[0]),static_cast<float>(values[1]),static_cast<float>(values[2]),height);
+					static_cast<float>(values[0]),static_cast<float>(values[1]),static_cast<float>(values[2]),height,forceVertical);
 				const auto& frame=placement.frame;
 				RE::NiPoint3 right{frame.right[0],frame.right[1],frame.right[2]},up{frame.up[0],frame.up[1],frame.up[2]};
 				RE::NiPoint3 baseRight{g_polarForward.y,-g_polarForward.x,0};
@@ -749,8 +751,10 @@ namespace
 		}
 
 		if (button->IsDown()) {
+			SKEE::SculptTrace::Count(SKEE::SculptTrace::Event::PointerDown);
 			DispatchMouseButton(RE::GFxEvent::EventType::kMouseDown, *button);
 		} else if (button->IsUp()) {
+			SKEE::SculptTrace::Count(SKEE::SculptTrace::Event::PointerUp);
 			DispatchMouseButton(RE::GFxEvent::EventType::kMouseUp, *button);
 		}
 		return true;

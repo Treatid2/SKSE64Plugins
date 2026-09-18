@@ -20,7 +20,7 @@ int main()
     }
     for(float elevation:{-60.F,0.F,60.F}) for(float distance:{30.F,100.F,300.F}) for(float height:{-150.F,-10.F,0.F,10.F,150.F}) {
         const auto original=SKEE::VR::MakePolarFrame(0,1,30,elevation);
-        const auto p=SKEE::VR::MakeRaisedPolarPlacement(0,1,30,elevation,distance,height);
+        const auto p=SKEE::VR::MakeRaisedPolarPlacement(0,1,30,elevation,distance,height,false);
         assert(Near(p.offset[0],original.radial[0]*distance));
         assert(Near(p.offset[1],original.radial[1]*distance));
         assert(Near(p.offset[2],original.radial[2]*distance+height));
@@ -32,5 +32,31 @@ int main()
         assert(Near(Dot(direction,p.frame.up),0));
         if(height==0) { assert(p.frame.radial==original.radial); assert(p.frame.up==original.up); }
     }
-    std::puts("Polar placement: positive-left convention and level/raised orthonormal viewer-facing frames passed.");
+    for(float heading:{0.F,30.F,90.F,160.F}) for(float azimuth:{-85.F,0.F,38.F,85.F})
+    for(float elevation:{-60.F,0.F,60.F}) for(float distance:{30.F,100.F,300.F})
+    for(float height:{-150.F,-10.F,0.F,10.F,150.F}) {
+        const float h=heading*0.01745329251994329577F;
+        const float x=std::cos(h),y=std::sin(h);
+        const auto tilted=SKEE::VR::MakeRaisedPolarPlacement(x,y,azimuth,elevation,distance,height,false);
+        const auto defaults=SKEE::VR::MakeRaisedPolarPlacement(x,y,azimuth,elevation,distance,height);
+        const auto upright=SKEE::VR::MakeRaisedPolarPlacement(x,y,azimuth,elevation,distance,height,true);
+        assert(defaults.offset==upright.offset);
+        assert(defaults.frame.radial==upright.frame.radial);
+        assert(defaults.frame.right==upright.frame.right);
+        assert(defaults.frame.up==upright.frame.up);
+        assert(upright.offset==tilted.offset); // orientation must not move the menu
+        assert((upright.frame.up==V{0,0,1}));
+        assert(Near(upright.frame.radial[2],0));
+        assert(Near(upright.frame.right[2],0));
+        assert(Near(Dot(upright.frame.radial,upright.frame.radial),1));
+        assert(Near(Dot(upright.frame.right,upright.frame.right),1));
+        assert(Near(Dot(upright.frame.radial,upright.frame.right),0));
+        auto horizontal=upright.offset; horizontal[2]=0;
+        const auto length=std::sqrt(Dot(horizontal,horizontal));
+        for(auto& c:horizontal) c/=length;
+        assert(Near(Dot(horizontal,upright.frame.radial),1)); // still faces viewer in yaw
+        assert(Near(Dot(horizontal,upright.frame.right),0));
+        assert(upright.frame.right==tilted.frame.right);
+    }
+    std::puts("Polar placement: upright default, opt-in tilt, unchanged offsets and horizontal facing passed.");
 }

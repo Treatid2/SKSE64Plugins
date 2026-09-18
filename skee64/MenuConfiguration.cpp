@@ -12,6 +12,7 @@ namespace SKEE::MenuConfiguration
     {
         ReadOption readOption{};
         float menuHeight{}, pickerHeight{};
+        bool forceVertical{true};
         constexpr std::array<const char*, 3> profileNames{ "Flat", "VR Normal", "VR Face" };
         struct Field { const char* key; const char* member; double minimum, maximum; };
         constexpr Field fields[]{
@@ -26,6 +27,7 @@ namespace SKEE::MenuConfiguration
             {"fPanelX", "panelX", -2048, 2048},
             {"fPanelY", "panelY", -2048, 2048},
             {"fAzimuth", "azimuth", -85, 85},
+            {"fSculptAzimuth", "sculptAzimuth", -85, 85},
             {"fElevation", "elevation", -60, 60},
             {"fDistance", "distance", 30, 300},
             {"fSurfaceScale", "surfaceScale", 25, 300},
@@ -89,8 +91,12 @@ namespace SKEE::MenuConfiguration
         };
         menuHeight = height("fHeightOffset");
         pickerHeight = height("fColorPickerHeightOffset");
+        // Shared by Normal/Face and the picker, like the captured viewer anchor.
+        // Upright by default. Only an explicit zero opts into viewer-facing pitch.
+        forceVertical = !readOption || Number(Option("VR Normal", "bForceVertical"), 0, 1) != 0;
     }
     float PlacementHeight(bool colorPicker) { return colorPicker ? pickerHeight : menuHeight; }
+    bool PlacementForceVertical() { return forceVertical; }
     void Register(RE::GFxMovie* movie, RE::GFxValue* root)
     {
         if (!readOption) return;

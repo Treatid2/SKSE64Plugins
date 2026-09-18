@@ -21,12 +21,13 @@ another supported input. No heuristic matching or best-effort patching occurs.
 | --- | ---: | --- |
 | Original compressed CWS | 104279 | `3a012da4fed80637ce3257b9b2b89243befab29a4bec5316a935cea87c889963` |
 | Original canonical FWS | 372756 | `647d722b15becb418cf07af09c6e2f1d5fa5a0d2b308e23c0db12339eea4ae4e` |
-| Accepted canonical output FWS | 417394 | `95daae0e2e0cebc779bd89a710549b9186f1b2b94695e7d5084bfa0fa6b7b927` |
-| Runtime patch RMSWFP01 | 148722 | `bdfa091f19b2601d1314c740361949cbd957f2cb90799a2299d78bfafb735876` |
+| Candidate 0.1.73 canonical output FWS | 432677 | `10a5f9ab649672884f0f8cfb8dec4616c7e345c40c288c4f7ab31868c19af66a` |
+| Runtime patch RMSWFP01 | 203334 | `61e27ca3678d42127e4fbbc33b00b8be26bdafdb21abcc79579a4c1a77446c42` |
 
-The output is the decompressed, byte-exact program/artwork of the accepted
-0.1.53 movie. Its compressed counterpart has SHA-256
-`e68fcbb62e26271fbd925761dfb77a194ab9856f13f703ea8bff975ddde24fc2`.
+The output is the decompressed, byte-exact program/artwork of the private
+0.1.73 Sculpt single-column candidate. Its compressed counterpart has SHA-256
+`376e42dd7e2cb32a67a7edfd01711e0bf644cc4c9fd2c361d9e718c2152f6819`.
+This supersedes the original 0.1.53 recipe; headset layout qualification is pending.
 Different container compression is not an image/layout/code change.
 
 Native code pins the **whole patch hash**, so changing a hash inside a patch
@@ -37,12 +38,11 @@ no overflowing ranges, unknown opcodes, trailing records or compressed data.
 
 ## What the patch carries
 
-17,850 operations copy 411,086 output bytes from offsets in the original and
-insert only 6,308 literal bytes: **98.49% original-byte reuse**. The longest
+24,385 operations copy 424,520 output bytes from offsets in the original and
+insert only 8,157 literal bytes: **98.11% original-byte reuse**. The longest
 literal run is 13 bytes. Every literal run is audited: none contains a
 contiguous four-byte sequence found anywhere in the original. Offset/length
-instructions and hashes account for most of the patch's file size: raw DEFLATE
-at level 9 measures 30,842 bytes. No whole recompiled class, movie or graphical asset is
+instructions and hashes account for most of the patch's file size. No whole recompiled class, movie or graphical asset is
 shipped as an INSERT block.
 
 This audit measures byte reuse, not authorship of every short compiler encoding.

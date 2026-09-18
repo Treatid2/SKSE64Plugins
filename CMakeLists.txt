@@ -303,6 +303,34 @@ if(DEFINED ENV{Skyrim64Path})
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    add_executable(vr2_sculpt_trace_tests tests/sculpt-trace.cpp)
+    target_include_directories(vr2_sculpt_trace_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_sculpt_trace_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_sculpt_trace_tests>"
+        COMMENT "Checking bounded Sculpt commit-to-history diagnostics")
+    add_dependencies(skee64 vr2_sculpt_trace_tests)
+
+    add_executable(vr2_export_skin_clone_tests tests/export-skin-clone.cpp)
+    target_include_directories(vr2_export_skin_clone_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_export_skin_clone_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_export_skin_clone_tests>"
+        VERBATIM)
+    add_dependencies(skee64 vr2_export_skin_clone_tests)
+    add_executable(vr2_sculpt_session_tests tests/sculpt-stroke-session.cpp)
+    target_include_directories(vr2_sculpt_session_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_sculpt_session_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_sculpt_session_tests>"
+        COMMENT "Checking Sculpt stroke lifecycle ownership")
+    add_dependencies(skee64 vr2_sculpt_session_tests)
+    add_executable(vr2_sculpt_mesh_tests tests/sculpt-mesh.cpp skee64/CDXMesh.cpp)
+    target_include_directories(vr2_sculpt_mesh_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    target_link_libraries(vr2_sculpt_mesh_tests PRIVATE CommonLibSSE xbyak::xbyak Microsoft::DirectXTK)
+    target_compile_definitions(vr2_sculpt_mesh_tests PRIVATE XBYAK_NO_OP_NAMES)
+    target_precompile_headers(vr2_sculpt_mesh_tests PRIVATE skee64/pch.h)
+    add_custom_command(TARGET vr2_sculpt_mesh_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_sculpt_mesh_tests>"
+        COMMENT "Checking production Sculpt CPU picking and batched WARP GPU upload")
+    add_dependencies(skee64 vr2_sculpt_mesh_tests)
     add_executable(vr2_polar_placement_tests tests/menu-polar-placement.test.cpp)
     target_compile_options(vr2_polar_placement_tests PRIVATE /UNDEBUG)
     add_custom_command(TARGET vr2_polar_placement_tests POST_BUILD

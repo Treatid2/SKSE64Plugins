@@ -2,6 +2,9 @@
    {
       if(this.vrAppearanceSetup) return undefined;
       this.vrAppearanceSetup = true;
+      // This is the stock active-tint/capacity counter, not a slider value.
+      // Its former top-centre position overlaps the consolidated VR tabs.
+      this.racePanel.tintCount._visible = false;
       var api = _global.skse.plugins.CharGen;
       var background = this.racePanel.ListBackground;
       var owner = this;
@@ -412,21 +415,31 @@
       // independently positioned menu.
       var profile = api.menuProfiles != undefined && api.menuProfiles["VR Normal"] != undefined ? api.menuProfiles["VR Normal"] : this.vrMenuProfile;
       var modal = this.colorField._visible;
+      var sculpt = this.vertexEditor.enabled && this.vertexEditor.vrWorkspaceBounds != undefined;
       var bounds = modal ? this.colorField.getBounds(this) : this.racePanel.ListBackground.getBounds(this);
       var point = {x:(bounds.xMin+bounds.xMax)/2,y:(bounds.yMin+bounds.yMax)/2};
-      this.localToGlobal(point);
+      if(sculpt && !modal)
+      {
+         bounds = this.vertexEditor.vrWorkspaceBounds;
+         point = {x:(bounds.xMin+bounds.xMax)/2,y:(bounds.yMin+bounds.yMax)/2};
+         this.vertexEditor.localToGlobal(point);
+      }
+      else this.localToGlobal(point);
       var azimuth = modal ? profile.pickerAzimuth : profile.azimuth;
       var elevation = modal ? profile.pickerElevation : profile.elevation;
       var distance = modal ? profile.pickerDistance : profile.distance;
       var scale = modal ? profile.pickerSurfaceScale : profile.surfaceScale;
       // Positive angles are LEFT of the starting avatar-facing view.
       if(azimuth == undefined || azimuth == -9999) azimuth = modal ? 38 : 30;
+      // Sculpt's wider workspace needs its own leftward placement. Modal
+      // picker placement and the ordinary Sliders/Presets angle are unchanged.
+      if(sculpt && !modal) azimuth = profile.sculptAzimuth == undefined || profile.sculptAzimuth == -9999 ? 48 : profile.sculptAzimuth;
       if(elevation == undefined || elevation == -9999) elevation = 0;
       if(distance == undefined || distance == -9999) distance = 100;
       if(scale == undefined || scale == -9999) scale = 100;
       if(api.GetMenuPolarPlacementState != undefined) this.vrWorldPlacementState = Number(api.GetMenuPolarPlacementState());
       var view = api.GetMenuView != undefined ? Number(api.GetMenuView()) : 0;
-      var placementKey = view+":"+modal+":"+azimuth+":"+elevation+":"+distance+":"+scale;
+      var placementKey = view+":"+modal+":"+sculpt+":"+this.vertexEditor.vrLargeCanvas+":"+azimuth+":"+elevation+":"+distance+":"+scale;
       // Polling observes transitions; it does not continuously reposition the
       // surface. Row selection, action wrapping and headset motion are not
       // placement events. Retry only while the native surface is not ready.
@@ -469,6 +482,7 @@
          this.ApplyVRMenuProfile(name);
          this.bPlayerZoom = current == 1;
          this.updateBottomBar();
+         if(this.vertexEditor.enabled) this.vertexEditor.updateBottomBar();
       }
       if(current == 2 && this.vrMenuViewFault != 2) this.setStatusText("Face view unavailable: tracking origin/head not resolved",3000);
       this.vrMenuViewFault = current;

@@ -23,12 +23,39 @@ namespace SKEE::FaceView
         float avatarScale{};
         std::atomic<unsigned> anchorRefreshes{0}, originReplacements{0}, updates{0};
         std::atomic<unsigned> cameraReads{0}, cameraMoves{0}, cameraRejected{0}, cameraCancelled{0};
+        RE::NiPointer<RE::NiNode> yawRoom, yawParent;
+        RE::NiPointer<RE::NiAVObject> yawHmd, yawAvatar, yawMenu, yawQuad;
+        RE::NiTransform yawOriginal{}, yawLast{}, yawParentWorld{};
+        RE::NiPoint3 yawCompensation{};
+        std::atomic<unsigned> yawState{0}; // 0 neutral, 1 applied, 2 rejected, 3 cancelled
+        std::atomic<float> yawDegrees{0};
+        std::atomic<bool> yawQueued{false};
+        bool OwnYaw()
+        { return yawRoom && yawRoom->parent==yawParent.get() && CameraPolicy::Same(yawRoom->local,yawLast) &&
+            CameraPolicy::Same(yawParent->world,yawParentWorld); }
+        void NoteYawTranslation()
+        { if (yawRoom && yawRoom.get()==room.get()) yawLast.translate=room->local.translate; }
+        bool RemoveYaw()
+        {
+            const bool owned=OwnYaw();
+            if (owned) {
+                yawRoom->local.rotate=yawOriginal.rotate;
+                yawRoom->local.translate-=yawCompensation;
+                if (room.get()==yawRoom.get()) lastLocal=room->local.translate;
+                RE::NiUpdateData update{0,RE::NiUpdateData::Flag::kDirty}; yawRoom->Update(update);
+            }
+            yawRoom.reset(); yawParent.reset(); yawHmd.reset(); yawAvatar.reset(); yawMenu.reset(); yawQuad.reset();
+            yawCompensation={}; yawDegrees.store(0);
+            yawState.store(owned ? 0 : 2);
+            return owned;
+        }
         bool Finite(const RE::NiPoint3& p) { return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z); }
         void RemoveOffset()
         {
             // Do not overwrite a replacement origin written by another owner.
-            if (room && room->local.translate.GetSquaredDistance(lastLocal) < 0.0001F) {
+            if (room && (!yawRoom || OwnYaw()) && room->local.translate.GetSquaredDistance(lastLocal) < 0.0001F) {
                 room->local.translate -= offset;
+                NoteYawTranslation();
                 RE::NiUpdateData update{0, RE::NiUpdateData::Flag::kDirty};
                 room->Update(update);
             }
@@ -75,6 +102,7 @@ namespace SKEE::FaceView
                 current.avatar.get() != expected.avatar.get() || current.originParent.get() != expected.originParent.get() ||
                 current.avatarParent.get() != expected.avatarParent.get()) return false;
             auto* origin = current.origin.get();
+            if (yawRoom && !OwnYaw()) return false;
             // A replaced origin belongs to its new owner. Do not reapply an old
             // offset or overwrite that owner's position with a stale snapshot.
             if (room && (room.get() != origin || origin->local.translate.GetSquaredDistance(lastLocal) >= 0.0001F)) return false;
@@ -86,6 +114,7 @@ namespace SKEE::FaceView
             offset += localDelta; manualWorld = nextManual;
             lastLocal = origin->local.translate + localDelta;
             origin->local.translate = lastLocal;
+            NoteYawTranslation();
             RE::NiUpdateData update{0, RE::NiUpdateData::Flag::kDirty};
             origin->Update(update);
             cameraMoves.fetch_add(1);
@@ -101,6 +130,7 @@ namespace SKEE::FaceView
             auto* origin = nodes ? nodes->RoomNode.get() : nullptr;
             auto* hmd = nodes ? nodes->HmdNode.get() : nullptr;
             if (!head || !origin || !origin->parent || !hmd || !Finite(head->world.translate) || !Finite(hmd->world.translate)) return false;
+            if (yawRoom && (!OwnYaw() || yawRoom.get()!=origin)) return false;
             // A tracking-origin translation must never move the avatar itself.
             for (auto* ancestor = head->parent; ancestor; ancestor = ancestor->parent) if (ancestor == origin) return false;
             bool tracked = false;
@@ -111,8 +141,9 @@ namespace SKEE::FaceView
                 if (originReplacements.fetch_add(1)==0) SKSE::log::warn("RaceMenu face-view tracking origin replaced between updates; possible competing owner");
             }
             auto baseLocal = origin->local.translate;
+            if (yawRoom) baseLocal-=yawCompensation;
             auto normalHmd = hmd->world.translate;
-            if (room && baseLocal.GetSquaredDistance(lastLocal) < 0.0001F) {
+            if (room && origin->local.translate.GetSquaredDistance(lastLocal) < 0.0001F) {
                 baseLocal -= offset;
                 normalHmd -= origin->parent->world.rotate * (offset * origin->parent->world.scale);
             }
@@ -137,8 +168,9 @@ namespace SKEE::FaceView
             if (!Finite(delta) || delta.Length() > 2000) return false;
             offset = origin->parent->world.rotate.Transpose()*delta/origin->parent->world.scale;
             room.reset(origin);
-            lastLocal = baseLocal+offset;
+            lastLocal = baseLocal+offset+yawCompensation;
             origin->local.translate = lastLocal;
+            NoteYawTranslation();
             RE::NiUpdateData update{0, RE::NiUpdateData::Flag::kDirty};
             origin->Update(update);
             updates.fetch_add(1);
@@ -146,6 +178,64 @@ namespace SKEE::FaceView
 #else
             return false;
 #endif
+        }
+        bool ApplyYaw(float requested)
+        {
+#if defined(ENABLE_SKYRIM_VR)
+            CameraNodes nodes;
+            if (!std::isfinite(requested) || std::abs(requested)>60 || !ResolveCamera(nodes)) return false;
+            auto* vr=RE::PlayerCharacter::GetSingleton()->GetVRNodeData();
+            auto* menu=vr ? vr->uiNode.get() : nullptr;
+            auto* quad=vr ? vr->InWorldUIQuadGeo.get() : nullptr;
+            const auto contains=[](RE::NiAVObject* object,RE::NiNode* ancestor) {
+                for (auto* p=object;p;p=p->parent) if (p==ancestor) return true;
+                return false;
+            };
+            if (!menu || !quad || contains(menu,nodes.origin.get()) || contains(quad,nodes.origin.get()) ||
+                !CameraPolicy::Valid(nodes.origin->local)) return false;
+            if (room && (room.get()!=nodes.origin.get() || nodes.origin->local.translate.GetSquaredDistance(lastLocal)>=0.0001F)) return false;
+            if (yawRoom && (!OwnYaw() || yawRoom.get()!=nodes.origin.get() || yawHmd.get()!=nodes.hmd.get() ||
+                yawAvatar.get()!=nodes.avatar.get() || yawMenu.get()!=menu || yawQuad.get()!=quad)) return false;
+            if (requested==0) {
+                if (yawRoom) return RemoveYaw();
+                yawState.store(0); return true;
+            }
+            const auto world=CameraPolicy::YawAroundEye(nodes.origin->world,nodes.hmd->world.translate,requested-yawDegrees.load());
+            const auto& parent=nodes.originParent->world;
+            auto next=nodes.origin->local;
+            next.rotate=parent.rotate.Transpose()*world.rotate;
+            next.translate=CameraPolicy::LocalPoint(parent,world.translate);
+            const auto compensation=yawCompensation+next.translate-nodes.origin->local.translate;
+            if (!CameraPolicy::Valid(world) || !CameraPolicy::Valid(next) || !CameraPolicy::SafeDelta(compensation)) return false;
+            if (!yawRoom) {
+                yawRoom=nodes.origin; yawParent=nodes.originParent; yawHmd=nodes.hmd; yawAvatar=nodes.avatar;
+                yawMenu.reset(menu); yawQuad.reset(quad); yawOriginal=nodes.origin->local; yawParentWorld=parent;
+            }
+            yawCompensation=compensation; yawLast=next;
+            nodes.origin->local=next;
+            if (room.get()==nodes.origin.get()) lastLocal=next.translate;
+            RE::NiUpdateData update{0,RE::NiUpdateData::Flag::kDirty}; nodes.origin->Update(update);
+            yawDegrees.store(requested); yawState.store(1); return true;
+#else
+            return false;
+#endif
+        }
+        bool RequestYaw(float requested, RE::GFxMovie* identity)
+        {
+            if (!Supported() || !std::isfinite(requested) || std::abs(requested)>60) return false;
+            auto* tasks=SKSE::GetTaskInterface();
+            if (!tasks || yawQueued.exchange(true)) return false;
+            const auto session=generation.load();
+            try {
+                tasks->AddTask([requested,identity,session] {
+                    auto* ui=RE::UI::GetSingleton();
+                    auto menu=ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+                    if (generation.load()!=session || !menu || menu->uiMovie.get()!=identity) yawState.store(3);
+                    else if (!ApplyYaw(requested)) yawState.store(2);
+                    yawQueued.store(false);
+                });
+            } catch (...) { yawQueued.store(false); return false; }
+            return true;
         }
         class Handler final : public RE::GFxFunctionHandler
         {
@@ -161,9 +251,37 @@ namespace SKEE::FaceView
                     args.retVal->SetMember("cameraMoves",RE::GFxValue{static_cast<double>(cameraMoves.load())});
                     args.retVal->SetMember("cameraRejected",RE::GFxValue{static_cast<double>(cameraRejected.load())});
                     args.retVal->SetMember("cameraCancelled",RE::GFxValue{static_cast<double>(cameraCancelled.load())});
+                    args.retVal->SetMember("yawState",RE::GFxValue{static_cast<double>(yawState.load())});
+                    args.retVal->SetMember("yawDegrees",RE::GFxValue{static_cast<double>(yawDegrees.load())});
+                    args.retVal->SetMember("yawQueued",RE::GFxValue{yawQueued.load()});
+#if defined(ENABLE_SKYRIM_VR)
+                    // Read-only topology evidence for a future bounded view-yaw
+                    // control. Never assume RoomNode excludes the menu/quad.
+                    CameraNodes nodes;
+                    const bool resolved = ResolveCamera(nodes);
+                    auto* player = resolved ? RE::PlayerCharacter::GetSingleton() : nullptr;
+                    auto* vrNodes = player ? player->GetVRNodeData() : nullptr;
+                    const auto contains = [](RE::NiAVObject* object, RE::NiNode* ancestor) {
+                        if (!object || !ancestor) return false;
+                        for (auto* p = object; p; p = p->parent) if (p == ancestor) return true;
+                        return false;
+                    };
+                    const bool topologyReady = vrNodes && vrNodes->uiNode && vrNodes->InWorldUIQuadGeo;
+                    args.retVal->SetMember("rotationTopologyAvailable",RE::GFxValue{topologyReady});
+                    args.retVal->SetMember("menuSharesTrackingOrigin",RE::GFxValue{
+                        topologyReady && contains(vrNodes->uiNode.get(),nodes.origin.get())});
+                    args.retVal->SetMember("quadSharesTrackingOrigin",RE::GFxValue{
+                        topologyReady && contains(vrNodes->InWorldUIQuadGeo.get(),nodes.origin.get())});
+#endif
                     return;
                 }
-                if (operation == 0 && args.retVal) args.retVal->SetNumber(Current());
+                if (operation == 4) {
+                    const bool accepted=args.argCount==1 && args.args[0].IsNumber() &&
+                        std::isfinite(args.args[0].GetNumber()) && std::abs(args.args[0].GetNumber())<=60 &&
+                        RequestYaw(static_cast<float>(args.args[0].GetNumber()),args.movie);
+                    if (!accepted) yawState.store(2);
+                    if (args.retVal) args.retVal->SetBoolean(accepted);
+                } else if (operation == 0 && args.retVal) args.retVal->SetNumber(Current());
                 else if (operation == 1 && args.argCount == 1 && args.args[0].IsNumber()) {
                     const auto requested = args.args[0].GetNumber();
                     const auto accepted = (requested == 0 || requested == 1) && Request(static_cast<unsigned>(requested));
@@ -207,7 +325,16 @@ namespace SKEE::FaceView
         } catch (...) { return false; }
         return true;
     }
-    void Restore() { generation.fetch_add(1); RemoveOffset(); view.store(0); }
+    void Restore()
+    {
+        generation.fetch_add(1);
+        if (yawRoom && !RemoveYaw()) {
+            // A competing transform owns the whole pose. Do not subtract a
+            // stale face offset merely because its translation still matches.
+            room.reset(); offset={}; manualWorld={};
+        } else RemoveOffset();
+        view.store(0);
+    }
     bool Request(unsigned requested)
     {
         if (!Supported() || requested > 1) return false;
@@ -239,5 +366,11 @@ namespace SKEE::FaceView
             movie->CreateFunction(&function, handler.get(), reinterpret_cast<void*>(i));
             root->SetMember(names[i], function);
         }
+        // Every queued operation is bound to this exact RaceSex movie and
+        // revalidates live topology. Keep the diagnostic alias for inspection.
+        RE::GFxValue testYaw;
+        movie->CreateFunction(&testYaw,handler.get(),reinterpret_cast<void*>(4));
+        root->SetMember("SetViewYaw",testYaw);
+        movie->SetVariable("_root.TestVRViewYaw",testYaw);
     }
 }

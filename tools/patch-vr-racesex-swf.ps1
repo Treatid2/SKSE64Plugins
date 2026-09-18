@@ -282,6 +282,8 @@ $buttonPanelText = Get-Content -Raw -LiteralPath $sourceButtonPanel
 $panelCapacityNeedle = '      var _loc3_ = 0;'
 if (-not $buttonPanelText.Contains($panelCapacityNeedle)) { throw 'ButtonPanel constructor capacity anchor missing.' }
 $capacityIndex = $buttonPanelText.IndexOf($panelCapacityNeedle)
+# Preserve the established generic footer expansion. Sculpt's dynamically
+# attached staticPanel has its own explicit capacity, patched below.
 $capacityAddition = "      if(_global.skse.IsVR() && this._parent._name == `"bottomBar`") this.maxButtons += 2;`r`n"
 $buttonPanelText = $buttonPanelText.Insert($capacityIndex, $capacityAddition)
 
@@ -293,7 +295,8 @@ $sliderDrawReplacement = @'
       if(_global.skse.IsVR())
       {
          this.track._x = 12.9;
-         this.track._width = 349.6;
+         // BrushSlider uses the same class but different, shorter artwork.
+         this.track._width = this._parent instanceof BrushListEntry ? 164.85 : 349.6;
       }
    }
    function handleInput(details, pathToFocus)
@@ -389,6 +392,60 @@ $sliderEntryText = $sliderEntryText.Replace($engineSliderCall, '         if(this
 $patchedSliderEntry = Join-Path $resolvedWork 'SliderListEntry.as'
 [IO.File]::WriteAllText($patchedSliderEntry, $sliderEntryText)
 
+# Private derivatives; ship only the byte-reuse patch, never these classes.
+function Replace-MenuAnchor([string]$Text, [string]$Needle, [string]$Replacement) {
+    if ([regex]::Matches($Text, [regex]::Escape($Needle)).Count -ne 1) { throw "Missing/ambiguous Sculpt recipe anchor: $Needle" }
+    return $Text.Replace($Needle, $Replacement)
+}
+$vertexText = Get-Content -Raw (Join-Path $sourceScripts 'scripts/__Packages/VertexEditor.as')
+$wireframeText = Get-Content -Raw (Join-Path $sourceScripts 'scripts/__Packages/WireframeDisplay.as')
+$modeText = Get-Content -Raw (Join-Path $sourceScripts 'scripts/__Packages/ModeSwitcher.as')
+$vertexText = Replace-MenuAnchor $vertexText '   function InitExtensions()' ((Get-Content -Raw (Join-Path $PSScriptRoot 'vr-racesex-patches/Sculpt.as.inc')) + "`r`n   function InitExtensions()")
+$vertexText = Replace-MenuAnchor $vertexText '      this.navPanel.clearButtons();' @'
+      if(_global.skse.IsVR())
+      {
+         for(var i = 0; i < this.navPanel.buttons.length; i++)
+         {
+            this.navPanel.buttons[i].removeEventListener("click",this,"onVRSculptFaceClicked");
+            this.navPanel.buttons[i].removeEventListener("click",this,"onVRCanvasSizeClicked");
+            this.navPanel.buttons[i].vrSculptAction = false;
+         }
+      }
+      this.navPanel.clearButtons();
+'@
+$vertexText = Replace-MenuAnchor $vertexText '      this.navPanel.updateButtons(true);' @'
+      if(_global.skse.IsVR())
+      {
+         this.RefreshVRSculptActions();
+      }
+      this.navPanel.updateButtons(true);
+      if(_global.skse.IsVR()) this.LayoutVRSculpt();
+'@
+$vertexText = Replace-MenuAnchor $vertexText '      this.ShowBottomBar(bShowAll);' "      this.UpdateVRSculptView(bShowAll);`r`n      if(_global.skse.IsVR() && bShowAll) this.LayoutVRSculpt();`r`n      this.ShowBottomBar(bShowAll);"
+$wireframeText = Replace-MenuAnchor $wireframeText "      this.calculateBackground();`r`n   }`r`n   function onMouseWheel" "      this.calculateBackground();`r`n      if(_global.skse.IsVR()) this._parent.LayoutVRSculpt();`r`n   }`r`n   function onMouseWheel"
+# Dense visible tabs, stable legacy mode IDs (Sculpt remains 3, Camera 2).
+# VR laser integrations can call setMode using the visible tab ordinal rather
+# than dispatching a RadioButton click. Accept visible Sculpt 2 as well as its
+# legacy semantic ID 3; Camera no longer exists in VR. Outbound IDs stay legacy.
+$modeText = Replace-MenuAnchor $modeText '      var _loc5_ = this.addMode("$Camera");' '      var _loc5_ = !_global.skse.IsVR() ? this.addMode("$Camera") : undefined;'
+$modeText = Replace-MenuAnchor $modeText '      this.buttonGroup.addButton(_loc5_);' '      if(_loc5_ != undefined) this.buttonGroup.addButton(_loc5_);'
+$modeText = Replace-MenuAnchor $modeText '      _loc5_.addEventListener("rollOver",this,"onItemRollOver");' '      if(_loc5_ != undefined) _loc5_.addEventListener("rollOver",this,"onItemRollOver");'
+$modeText = Replace-MenuAnchor $modeText '      var _loc2_ = this.buttonGroup.getButtonAt(index);' @'
+      if(_global.skse.IsVR())
+      {
+         this.vrLastRequestedMode = index;
+         this.vrModeRequestSequence = this.vrModeRequestSequence == undefined ? 1 : this.vrModeRequestSequence+1;
+         if(index > 2) index--;
+      }
+      var _loc2_ = this.buttonGroup.getButtonAt(index);
+'@
+$modeText = Replace-MenuAnchor $modeText '      return this._modes.indexOf(this.buttonGroup.selectedButton);' "      var index = this._modes.indexOf(this.buttonGroup.selectedButton);`r`n      return _global.skse.IsVR() && index >= 2 ? index+1 : index;"
+$modeText = Replace-MenuAnchor $modeText 'index:this._modes.indexOf(event.target)' 'index:(_global.skse.IsVR() && this._modes.indexOf(event.target) >= 2 ? this._modes.indexOf(event.target)+1 : this._modes.indexOf(event.target))'
+$modeText = Replace-MenuAnchor $modeText 'index:this._modes.indexOf(event.item)' 'index:(_global.skse.IsVR() && this._modes.indexOf(event.item) >= 2 ? this._modes.indexOf(event.item)+1 : this._modes.indexOf(event.item))'
+foreach ($class in @(@('VertexEditor',$vertexText),@('WireframeDisplay',$wireframeText),@('ModeSwitcher',$modeText))) {
+    [IO.File]::WriteAllText((Join-Path $resolvedWork ($class[0]+'.as')), $class[1], [Text.UTF8Encoding]::new($false))
+}
+
 $categoryPushNeedle = '         this.categoryList.entryList.push(_loc5_);'
 $categoryPushReplacement = @'
          if(this.IsVRCategoryVisible(_loc5_.flag))
@@ -453,6 +510,12 @@ $extensionSwf = Join-Path $resolvedWork 'RaceSex_menu.extensions.swf'
 & $resolvedFfdec -replace $resolvedOutput $extensionSwf '\__Packages\SliderListEntry' $patchedSliderEntry
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $extensionSwf -PathType Leaf)) { throw 'Native slider callback replacement failed.' }
 Copy-Item -LiteralPath $extensionSwf -Destination $resolvedOutput -Force
+foreach ($class in @('VertexEditor','WireframeDisplay','ModeSwitcher')) {
+    $nextSwf = Join-Path $resolvedWork ($class+'.swf')
+    & $resolvedFfdec -replace $resolvedOutput $nextSwf ("\__Packages\"+$class) (Join-Path $resolvedWork ($class+'.as'))
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $nextSwf)) { throw "Failed to replace $class." }
+    Copy-Item -LiteralPath $nextSwf -Destination $resolvedOutput -Force
+}
 & $resolvedFfdec -swf2xml $resolvedOutput $verificationXml
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $verificationXml -PathType Leaf)) {
     throw "JPEXS failed to export the rebuilt SWF for verification (exit $LASTEXITCODE)."
@@ -553,9 +616,22 @@ foreach ($requiredTraceFunction in @('ArmVRInputTrace', 'DisarmVRInputTrace', 'R
 }
 if (-not (Test-Path -LiteralPath $verifiedRaceMenuSliderScript -PathType Leaf) -or
     (Get-Content -Raw -LiteralPath $verifiedRaceMenuSliderScript) -match 'this\.offsetRight = 9' -or
-    (Get-Content -Raw -LiteralPath $verifiedRaceMenuSliderScript) -notmatch 'this\.track\._width = 349\.6') {
+    (Get-Content -Raw -LiteralPath $verifiedRaceMenuSliderScript) -notmatch '164\.85 : 349\.6') {
     throw 'The rebuilt SWF did not retain the VR slider post-layout clamp.'
 }
+foreach ($boundary in @('LayoutVRSculpt','vrWorkspaceBounds','DrawVRSculptBackground','PositionVRSculptTabs','Stage.visibleRect','UpdateVRSculptView','onVRSculptFaceClicked','onVRCanvasSizeClicked','Large canvas','Standard canvas')) {
+    $vertexVerification = Get-Content -Raw -LiteralPath (Join-Path $verificationScripts 'scripts/__Packages/VertexEditor.as')
+    if (-not $vertexVerification.Contains($boundary)) { throw "Rebuilt Sculpt editor is missing boundary: $boundary" }
+}
+$wireframeVerification = Get-Content -Raw -LiteralPath (Join-Path $verificationScripts 'scripts/__Packages/WireframeDisplay.as')
+if (-not $wireframeVerification.Contains('this._parent.LayoutVRSculpt()')) { throw 'Rebuilt Sculpt canvas lacks its loaded-layout callback.' }
+$modeVerification = Get-Content -Raw -LiteralPath (Join-Path $verificationScripts 'scripts/__Packages/ModeSwitcher.as')
+if ($modeVerification -notmatch '!_global\.skse\.IsVR\(\) \? this\.addMode\("\$Camera"\)' -or
+    $modeVerification -notmatch 'index > 2' -or $modeVerification -notmatch '_loc\d+_ >= 2' -or
+    -not $modeVerification.Contains('vrLastRequestedMode') -or $modeVerification -match 'if\(index == 2\)') {
+    throw 'Rebuilt mode tabs lack Camera exclusion or legacy Sculpt ID mapping.'
+}
+if (-not $verifiedRaceMenuText.Contains('this.racePanel.tintCount._visible = false')) { throw 'Rebuilt VR appearance lacks tint-counter suppression.' }
 
 $outputHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedOutput).Hash
 Write-Host "Verified patched VR RaceSexMenu SWF: $resolvedOutput"

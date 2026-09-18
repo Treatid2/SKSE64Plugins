@@ -36,4 +36,23 @@ namespace SKEE::CameraPolicy
     { return frame.rotate * (local * frame.scale); }
     inline bool SafeDelta(const RE::NiPoint3& p)
     { return Finite(p) && p.Length() <= 2000.F; }
+    inline bool Same(const RE::NiTransform& a, const RE::NiTransform& b)
+    {
+        if (!Valid(a) || !Valid(b) || a.translate.GetSquaredDistance(b.translate) >= 0.0001F ||
+            std::abs(a.scale-b.scale) > 0.0001F) return false;
+        for (unsigned i=0;i<3;++i) for (unsigned j=0;j<3;++j)
+            if (std::abs(a.rotate.entry[i][j]-b.rotate.entry[i][j]) > 0.0001F) return false;
+        return true;
+    }
+    inline RE::NiTransform YawAroundEye(const RE::NiTransform& origin, const RE::NiPoint3& eye, float degrees)
+    {
+        const float angle=degrees*0.017453292519943295F, c=std::cos(angle), s=std::sin(angle);
+        RE::NiMatrix3 yaw;
+        yaw.entry[0][0]=c; yaw.entry[0][1]=-s;
+        yaw.entry[1][0]=s; yaw.entry[1][1]=c;
+        auto result=origin;
+        result.rotate=yaw*origin.rotate;
+        result.translate=eye+yaw*(origin.translate-eye);
+        return result;
+    }
 }

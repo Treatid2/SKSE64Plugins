@@ -2,12 +2,13 @@
 
 ## Public source release
 
-The 0.1.60 VR beta and pinned source bundle are available at
-https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.60 .
-Native version is `0.5.0.70`. The release uses the exact live-tested candidate
-DLL, not a later rebuild; its build receipt records the then-uncommitted height
-changes based on `cd22493`'s earlier ancestor `0b6b553`. Those native changes
-are committed in `59ab04f`; later release changes are documentation-only.
+The 0.1.79 VR beta and pinned source bundle are available at
+https://github.com/Treatid2/SKSE64Plugins/releases/tag/racemenu-vr2-v0.1.79 .
+Native version is `0.5.0.89`. The release retains the exact headset-tested
+candidate DLL and menu patch, not a later rebuild. Its build receipt records
+the development worktree based on `3eef322`; the release tag commits those
+corresponding sources. Documentation and packaging notes were refreshed after
+headset testing without changing the native binary or runtime patch.
 The source bundle includes CommonLibSSE-NG and OpenVR at the pinned revisions,
 with both focused CommonLib corrections already applied. Its
 `SOURCE-RELEASE.md` gives portable build instructions: no Codex, managed
@@ -21,7 +22,7 @@ extracted source tree:
 $env:VCPKG_ROOT = 'C:/development/vcpkg'
 $env:SKEE_BUILD_ROOT = 'C:/development/racemenu-build'
 cmake --preset release-msvc-vcpkg-vr `
-  -DSKEE_VR2_PACKAGE_VERSION=0.1.60 -DSKEE_NATIVE_PLUGIN_VERSION=0.5.0.70
+  -DSKEE_VR2_PACKAGE_VERSION=0.1.79 -DSKEE_NATIVE_PLUGIN_VERSION=0.5.0.89
 cmake --build --preset release-msvc-vcpkg-vr --parallel 4
 ```
 
@@ -34,10 +35,12 @@ again to the already-patched source bundle.
 
 This is a VR beta, not complete cross-runtime qualification. The clean build
 and keyboard/camera/SWF policy tests and all 23 production shader compiler
-checks pass. The exact 0.1.60 candidate has headset acceptance for menu height
-offsets and wand alignment, including extreme settings; the warning also has
-wrong/correct-original acceptance. Broader Sculpt/SteamVR/SE/AE checks and independent review remain
-outstanding. Camera-tab visible movement is ineffective in the tested session.
+checks pass. Human OCU testing covers menu placement, wand alignment,
+Sculpt deformation, History undo/redo, head export/clear/import, presets,
+canvas expansion and viewpoint rotation. The warning has wrong/correct-original
+acceptance. Performance stability was observed, not measured. Broader SteamVR
+Sculpt, cross-session persistence, SE/AE checks and independent review remain
+outstanding. The redundant Camera tab is removed in VR.
 
 ## Maintainer managed build
 

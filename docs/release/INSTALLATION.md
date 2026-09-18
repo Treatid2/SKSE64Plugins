@@ -77,8 +77,15 @@ negative values lower it (-150..150 Skyrim world units; default 0). These
 are relative to the viewpoint captured when the menu opens or when switching
 Normal/Face view, not absolute world heights or continuously tracked head
 offsets. They are added after angular elevation; both views share the settings.
-The picker height is independent of the main menu height. The surface still
-faces the captured viewer and its pointer interaction plane moves with it.
+The picker height is independent of the main menu height. By default
+`bForceVertical=1` keeps the surface upright; set `bForceVertical=0` to opt into
+vertical facing/tilt towards the viewer, useful at extreme height offsets.
+Horizontal facing remains enabled. The pointer interaction plane moves with
+the visible surface. Sculpt has its own `fSculptAzimuth` placement.
+
+Sculpt's Turn left/Centre view/Turn right buttons adjust viewpoint yaw in
+5-degree steps, limited to +/-60 degrees, without moving the menu. Rotation
+survives Face/Normal view changes and is restored when the menu closes.
 
 On update install the matching DLL and runtime patch together and merge INI
 changes. Do not mix patch/native releases. To remove, disable the add-on

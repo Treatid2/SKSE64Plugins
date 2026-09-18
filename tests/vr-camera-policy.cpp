@@ -54,6 +54,37 @@ int main()
         const auto total = faceOffset + LocalDelta(trackingFrame, delta);
         Near((origin+total)-total, origin);
 
+        // World yaw is about the live eye, not the room or avatar origin.
+        RE::NiTransform roomWorld=avatarFrame;
+        const RE::NiPoint3 trackedEye{4,8,6}, trackedHand{6,7,5};
+        const auto eye=roomWorld.translate+WorldDelta(roomWorld,trackedEye);
+        const auto yawed=YawAroundEye(roomWorld,eye,10);
+        Check(Valid(yawed), "Yaw produced invalid transform");
+        Near(yawed.translate+WorldDelta(yawed,trackedEye),eye);
+        const auto hand=roomWorld.translate+WorldDelta(roomWorld,trackedHand);
+        const auto yawedHand=yawed.translate+WorldDelta(yawed,trackedHand);
+        const auto difference=yawedHand-eye;
+        RE::NiTransform yawOnly;
+        yawOnly=YawAroundEye(yawOnly,{},10);
+        Near(difference,WorldDelta(yawOnly,hand-eye));
+        Near(YawAroundEye(yawed,eye,-10).translate,roomWorld.translate);
+        Check(Same(YawAroundEye(yawed,eye,-10),roomWorld), "Yaw inverse changed orientation or scale");
+        Check(!Same(yawed,roomWorld), "Rotation ownership missed changed yaw");
+        for(const float angle : {-60.F,-30.F,-5.F,5.F,30.F,60.F}) {
+            const auto turn=YawAroundEye(roomWorld,eye,angle);
+            Near(turn.translate+WorldDelta(turn,trackedEye),eye);
+            Check(Same(YawAroundEye(turn,eye,-angle),roomWorld), "Full control range inverse failed");
+        }
+        const auto yawLocal=LocalPoint(trackingFrame,yawed.translate);
+        Near(trackingFrame.translate+WorldDelta(trackingFrame,yawLocal),yawed.translate);
+        const auto compensation=yawLocal-LocalPoint(trackingFrame,roomWorld.translate);
+        const auto faceBase=LocalPoint(trackingFrame,roomWorld.translate)-faceOffset;
+        Near((faceBase+faceOffset+compensation)-faceOffset-compensation,faceBase);
+        auto competing=yawed; competing.scale+=0.01F;
+        Check(!Same(competing,yawed), "Ownership missed changed scale");
+        competing=yawed; competing.translate.x+=1;
+        Check(!Same(competing,yawed), "Ownership missed changed translation");
+
         Check(!SafeDelta({2001, 0, 0}), "Oversized move accepted");
         Check(!SafeDelta({std::numeric_limits<float>::infinity(), 0, 0}), "Infinite move accepted");
         Check(!SafeDelta({0, std::numeric_limits<float>::quiet_NaN(), 0}), "NaN move accepted");
