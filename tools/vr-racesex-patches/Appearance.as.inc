@@ -6,6 +6,12 @@
       // Its former top-centre position overlaps the consolidated VR tabs.
       this.racePanel.tintCount._visible = false;
       var api = _global.skse.plugins.CharGen;
+      if(api.avatarLightingSupported)
+      {
+         // Disable only RaceMenu's old Papyrus light; all other lights are untouched.
+         skse.SendModEvent(_global.eventPrefix + "ToggleLight","",0);
+         api.SetAvatarLighting(Boolean(this.bShowLight));
+      }
       var background = this.racePanel.ListBackground;
       var owner = this;
       this.vrBackgroundImageState = "absent";
@@ -473,6 +479,18 @@
    function PollVRMenuView()
    {
       var api = _global.skse.plugins.CharGen;
+      if(api.avatarLightingSupported)
+      {
+         api.UpdateAvatarLighting();
+         var lightState = Number(api.GetAvatarLightingState());
+         if(lightState == 2 && this.vrLightFault != 2)
+         {
+            this.bShowLight = false;
+            this.updateBottomBar();
+            this.setStatusText("Front lighting unavailable: avatar/head/scene not resolved",3000);
+         }
+         this.vrLightFault = lightState;
+      }
       if(api.GetMenuView == undefined) return undefined;
       var current = Number(api.GetMenuView());
       if(current == 1) api.UpdateMenuView();

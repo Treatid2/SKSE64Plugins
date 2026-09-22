@@ -6,6 +6,18 @@ const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../tools/vr-racesex-patches/TextEntry.as.inc'), 'utf8');
 const objectSource = source.replace(/^   function (\w+)\(/gm, '$1(').replace(/^   }[ \t]*$/gm, '},');
 const prototype = Function('return ({' + objectSource + '\n})')();
+if(process.env.SKEE_REBUILT_RACEMENU_AS) {
+  const rebuilt=fs.readFileSync(process.env.SKEE_REBUILT_RACEMENU_AS,'utf8');
+  for(const name of ['ShowVRTextDraft','PollVRTextInput','CancelVRTextInput']) {
+    const signature=rebuilt.indexOf('function '+name+'(');
+    assert.ok(signature>=0,'rebuilt '+name);
+    const start=rebuilt.indexOf('{',signature), parameters=rebuilt.slice(signature,start).match(/\(([^)]*)\)/)[1];
+    let end=start+1, braces=1;
+    for(;braces;end++) { if(rebuilt[end]==='{') braces++; if(rebuilt[end]==='}') braces--; }
+    prototype[name]=Function(parameters,rebuilt.slice(start+1,end-1));
+  }
+  console.log('Testing rebuilt live-draft/poll/cancel functions (surrogate).');
+}
 let beginCalls = [], cancels = [], pollResult, events = [], names = [], cleared = [], layouts = 0;
 global.setInterval = () => 7;
 global.clearInterval = id => cleared.push(id);
@@ -77,16 +89,23 @@ assert.equal(o.BeginVRTextInput('filter'),true); assert.deepEqual(beginCalls,[['
 assert.equal(o.vrFilterButton.textField.border,true);
 assert.equal(o.BeginVRTextInput('name'),false); assert.equal(beginCalls.length,1);
 pollResult={status:'pending'}; o.PollVRTextInput(); assert.equal(events.length,0);
+pollResult={status:'pending',text:'hai'}; o.PollVRTextInput();
+assert.equal(o.vrFilterButton.label,'hai'); assert.equal(o.GetVRFilterText(),'');
+assert.equal(events.length,0);
 pollResult={status:'accepted',text:'hair',error:''}; o.PollVRTextInput();
 assert.equal(o.searchWidget.textField.text,'hair'); assert.deepEqual(events,[{type:'inputEnd',data:'hair'}]);
 assert.equal(o.vrFilterButton.textField.border,false); assert.equal(o.vrTextInputActive,false);
 // Cancelling leaves the accepted filter/name unchanged, removes feedback/timer.
 o.BeginVRTextInput('filter'); pollResult={status:'cancelled',text:'discard me',error:''}; o.PollVRTextInput();
 assert.equal(o.searchWidget.textField.text,'hair'); assert.equal(events.length,1);
+assert.equal(o.vrFilterButton.label,'hair');
 o.BeginVRTextInput('filter'); pollResult={status:'unavailable',text:'é'.repeat(128),error:'text_exceeds_byte_budget'};
 o.PollVRTextInput(); assert.equal(o.searchWidget.textField.text,'hair'); assert.equal(events.length,1);
 assert.equal(o.vrTextInputError,'text_exceeds_byte_budget');
-o.BeginVRTextInput('name'); pollResult={status:'accepted',text:'  Hero  ',error:''}; o.PollVRTextInput();
+o.BeginVRTextInput('name'); pollResult={status:'pending',text:'  Hero  ',error:''}; o.PollVRTextInput();
+assert.equal(o.vrNameButton.label,'Name:   Hero  '); assert.deepEqual(names,[]);
+assert.equal(o.bottomBar.playerInfo.PlayerName.text,'Prisoner');
+pollResult={status:'accepted',text:'  Hero  ',error:''}; o.PollVRTextInput();
 assert.deepEqual(names,['Hero']); assert.equal(o.bottomBar.playerInfo.PlayerName.text,'Hero');
 assert.equal(o.vrNameButton.label,'Name: Hero');
 o.BeginVRTextInput('name'); pollResult={status:'accepted',text:'   ',error:''}; o.PollVRTextInput();
@@ -140,6 +159,8 @@ assert.match(patcher,/if\(_global\.skse\.IsVR\(\)\).*FinishVRCharacterCreation/s
 const native=fs.readFileSync(path.join(__dirname,'../skee64/RaceSexMenuVRKeyboard.cpp'),'utf8');
 assert.doesNotMatch(native,/std::async|std::thread|\.wait\(|\.get\(\).*future/);
 assert.match(native,/i < 32/); assert.match(native,/kKeyboardTimeout/);
+assert.match(native,/ReadBufferedDraft\(g_session\.streamed, g_session\.text/);
+assert.match(native,/The existing UI timer[\s\S]*?RefreshBufferedDraft\(\);\s*}\s*class KeyboardFunction/);
 assert.match(native,/menu->uiMovie.get\(\) == a_movie/);
 assert.match(native,/g_session.owner != a_params.movie/);
 assert.match(native,/if \(g_session.ownsKeyboard\) g_session.overlay->HideKeyboard/);
@@ -157,6 +178,30 @@ const queuedRename=creation.slice(creation.indexOf('CharacterCreationInterface::
 assert.match(queuedRename,/UpdateCharacterNameWithoutFinishing/);
 assert.doesNotMatch(queuedRename,/ChangeName|kHide|AddMessage/);
 assert.match(queuedRename,/sessionGeneration_\.load\(\) != generation \|\| state_\.load\(\) != kReady/);
+assert.match(queuedRename,/a_configured && !SKEE::VR::MenuOptionsPolicy::ApplyPlayerName/);
+assert.match(queuedRename,/if \(a_configured\)\s*\{\s*nameStartIntent_\.Consume\(\)/);
+const queuedFinish=creation.slice(creation.indexOf('CharacterCreationInterface::QueueFinish'),creation.indexOf('void CharacterCreationInterface::CancelConfiguredName'));
+assert.match(queuedFinish,/const auto generation = sessionGeneration_\.load\(\)/);
+assert.match(queuedFinish,/SessionLease::IsCurrent\([\s\S]*generation[\s\S]*kFinishing/);
+assert.match(queuedFinish,/\[this, generation, name = std::move\(a_name\), a_useCurrentName\]/);
+const main=fs.readFileSync(path.join(__dirname,'../skee64/main.cpp'),'utf8');
+assert.match(main,/case SKSE::MessagingInterface::kNewGame:[\s\S]*?g_characterCreationInterface.BeginNewGame\(\)/);
+assert.match(main,/case SKSE::MessagingInterface::kPreLoadGame:[\s\S]*?g_characterCreationInterface.OnSaveLoading\(\)/);
+assert.match(main,/case SKSE::MessagingInterface::kPostLoadGame:[\s\S]*?if \(!message->data\) g_characterCreationInterface.CancelConfiguredName\(\)/);
+const startObserver=fs.readFileSync(path.join(__dirname,'../skee64/VRNewGameIntent.cpp'),'utf8');
+assert.match(startObserver,/"StartNewGame"/);
+assert.doesNotMatch(startObserver,/"NEW"|ChangeName|SetFullName/);
+assert.match(startObserver,/menu->uiMovie.get\(\) == args.GetMovie\(\)/);
+assert.match(startObserver,/original\(args\)/);
+assert.match(startObserver,/originalAccept\(menu, &observer\)/);
+assert.match(startObserver,/target != module.base\(\) \+ 0x8CFC00/);
+assert.match(creation,/state_\.store\(kReady\);\s*ApplyConfiguredName\(\)/);
+const pointer=fs.readFileSync(path.join(__dirname,'../skee64/RaceSexMenuVRInput.cpp'),'utf8');
+const constructor=pointer.slice(pointer.indexOf('bool RaceSexMenuLoadMovieHook'),pointer.indexOf('bool RaceSexMenuCanProcessHook'));
+assert.ok(constructor.indexOf('ConfigureQuill') < constructor.indexOf('auto loaded ='));
+assert.match(constructor,/ConfigureQuill\(a_menu->menuFlags,[\s\S]*?UseQuill\(\)/);
+const repair=main.slice(main.indexOf('void ConfigureRaceSexMouseCursor'),main.indexOf('class RaceSexMouseCursorSink'));
+assert.doesNotMatch(repair,/menuFlags\.(set|reset)/,'late movie repair must not change cursor ownership');
 assert.match(creation.slice(creation.indexOf('void CharacterCreationInterface::Revert'),creation.indexOf('bool CharacterCreationInterface::IsActive')),/sessionGeneration_\.fetch_add\(1\)/);
 assert.match(creation.slice(creation.indexOf('CharacterCreationInterface::ProcessEvent'),creation.indexOf('void CharacterCreationInterface::ObserveCurrentState')),/sessionGeneration_\.fetch_add\(1\)/);
 const finish=creation.slice(creation.indexOf('void CharacterCreationInterface::FinishOnGameThread'));

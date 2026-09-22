@@ -1,5 +1,6 @@
 #include "RaceSexMenuVRKeyboard.h"
 #include "RaceSexMenuVRKeyboardPolicy.h"
+#include "VRRuntime.h"
 
 #if defined(ENABLE_SKYRIM_VR)
 #include "RE/B/BSOpenVR.h"
@@ -19,8 +20,6 @@ namespace
 	using Clock = std::chrono::steady_clock;
 	constexpr auto kKeyboardTimeout = std::chrono::minutes(5);
 	constexpr std::uint32_t kMaximumTextBytes = 255;
-	// OpenVR's input limit is characters, whereas our engine/API budget is bytes.
-	constexpr std::uint32_t kKeyboardBufferBytes = kMaximumTextBytes * 4 + 1;
 	using SKEE::VR::KeyboardPolicy::IsValidUTF8;
 	struct Session
 	{
@@ -29,6 +28,7 @@ namespace
 		vr::VROverlayHandle_t handle{ vr::k_ulOverlayHandleInvalid };
 		std::uint32_t id{};
 		bool ownsKeyboard{};
+		bool streamed{};
 		std::string status{ "idle" };
 		std::string text;
 		std::string error;
@@ -65,6 +65,18 @@ namespace
 		SKSE::log::info("RaceMenu VR keyboard {}: {} ({})", g_session.id, a_status, a_error);
 	}
 
+	bool RefreshBufferedDraft()
+	{
+		using SKEE::VR::KeyboardPolicy::BufferResult;
+		const auto result = SKEE::VR::KeyboardPolicy::ReadBufferedDraft(g_session.streamed, g_session.text,
+			[](char* text, std::uint32_t capacity) { return g_session.overlay->GetKeyboardText(text, capacity); });
+		if (result == BufferResult::TooLong || result == BufferResult::Invalid) {
+			Finish("unavailable", result == BufferResult::TooLong ? "text_exceeds_byte_budget" : "invalid_utf8");
+			return false;
+		}
+		return true;
+	}
+
 	void Poll()
 	{
 		if (g_session.status != "pending") return;
@@ -79,29 +91,42 @@ namespace
 		// Consume only our overlay's queue, never the game's global event stream.
 		vr::VREvent_t event{};
 		for (unsigned i = 0; i < 32 && g_session.overlay->PollNextOverlayEvent(g_session.handle, &event, sizeof(event)); ++i) {
-			if (event.eventType == vr::VREvent_KeyboardDone) {
-				std::array<char, kKeyboardBufferBytes> text;
-				text.fill('\x7F'); // Detect a backend that fails to write a terminator.
-				const auto count = g_session.overlay->GetKeyboardText(text.data(), static_cast<std::uint32_t>(text.size()));
-				const auto* terminator = static_cast<const char*>(std::memchr(text.data(), '\0', text.size()));
-				if (count > text.size() || !terminator || terminator - text.data() > kMaximumTextBytes) {
-					Finish("unavailable", "text_exceeds_byte_budget");
-					return;
-				}
-				const std::string candidate{ text.data(), static_cast<std::size_t>(terminator - text.data()) };
-				if (!IsValidUTF8(candidate)) {
-					Finish("unavailable", "invalid_utf8");
-					return;
-				}
-				g_session.text = candidate;
-				Finish("accepted");
-				return;
+			if (event.eventType == vr::VREvent_KeyboardCharInput || event.eventType == vr::VREvent_KeyboardDone) {
+                if (event.data.keyboard.uUserValue && event.data.keyboard.uUserValue != g_session.id) continue;
+                if (event.eventType == vr::VREvent_KeyboardCharInput) {
+                    const auto& input = event.data.keyboard.cNewInput;
+                    const auto* end = static_cast<const char*>(std::memchr(input, '\0', sizeof(input)));
+                    const std::string_view chunk(input, end ? static_cast<std::size_t>(end - input) : sizeof(input));
+                    // Keep the session's backend contract fixed. OCU's full
+                    // buffer remains authoritative even if an event has text.
+                    if (g_session.streamed && !chunk.empty()) {
+                        const auto edit = SKEE::VR::KeyboardPolicy::EditDraft(g_session.text, chunk);
+                        if (edit == SKEE::VR::KeyboardPolicy::EditResult::Cancel) {
+                            Finish("cancelled"); return;
+                        }
+                        if (edit == SKEE::VR::KeyboardPolicy::EditResult::Invalid) {
+                            Finish("unavailable", "invalid_character_input"); return;
+                        }
+                        g_session.error = edit == SKEE::VR::KeyboardPolicy::EditResult::TooLong ? "text_exceeds_byte_budget" : "";
+                    }
+                    continue;
+                } else if (g_session.streamed) {
+                    // GetKeyboardText is not authoritative in minimal mode;
+                    // some SteamVR versions return only the last entered key.
+                    Finish("accepted"); return;
+                }
+				// Read final authoritative buffer before releasing the keyboard.
+				if (!RefreshBufferedDraft()) return;
+				Finish("accepted"); return;
 			}
 			if (event.eventType == vr::VREvent_KeyboardClosed) {
 				Finish("cancelled");
 				return;
 			}
 		}
+		// OCU's buffered mode need not dispatch a CharInput event for each edit.
+		// The existing UI timer polls this only while our own session is pending.
+		RefreshBufferedDraft();
 	}
 
 	class KeyboardFunction final : public RE::GFxFunctionHandler
@@ -140,6 +165,8 @@ namespace
 							if (++g_nextId == 0) ++g_nextId;
 							g_session.id = g_nextId;
 							g_session.text = initial;
+                            const auto runtime = SKEE::VR::ActiveRuntime();
+                            g_session.streamed = SKEE::VR::UsesStreamedKeyboard(runtime);
 							auto* openVR = RE::BSOpenVR::GetSingleton();
 							// Use Skyrim's active proxy: SteamVR or OpenComposite/OCU.
 							g_session.overlay = openVR ? RE::BSOpenVR::GetIVROverlayFromContext(&openVR->vrContext) : nullptr;
@@ -154,14 +181,15 @@ namespace
 									const auto shown = g_session.overlay->ShowKeyboardForOverlay(g_session.handle,
 										vr::k_EGamepadTextInputModeNormal, vr::k_EGamepadTextInputLineModeSingleLine,
 										kind == "name" ? "Character name" : "Filter RaceMenu options",
-										kMaximumTextBytes, initial.c_str(), false, g_session.id);
+										kMaximumTextBytes, initial.c_str(), g_session.streamed, g_session.id);
 									if (shown != vr::VROverlayError_None) {
 										Finish("unavailable", "show_keyboard_failed");
 									} else {
 										g_session.ownsKeyboard = true;
 										g_session.status = "pending";
 										g_session.deadline = Clock::now() + kKeyboardTimeout;
-										SKSE::log::info("RaceMenu VR keyboard {}: opened for {}", g_session.id, kind);
+                                        SKSE::log::info("RaceMenu VR keyboard {}: opened for {} ({}, runtime={})", g_session.id, kind,
+                                            g_session.streamed ? "streamed" : "buffered", SKEE::VR::RuntimeName(runtime));
 									}
 								}
 							}

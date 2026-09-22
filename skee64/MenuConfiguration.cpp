@@ -2,6 +2,8 @@
 #include "MenuConfiguration.h"
 #include "MenuAppearancePolicy.h"
 #include "ScaleformUtils.h"
+#include "VRMenuOptionsPolicy.h"
+#include "VRRuntime.h"
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -13,6 +15,9 @@ namespace SKEE::MenuConfiguration
         ReadOption readOption{};
         float menuHeight{}, pickerHeight{};
         bool forceVertical{true};
+        std::string playerName;
+        bool overrideExistingPlayerName{};
+        int legacyQuill{-1}, steamVRQuill{-1}, ocuQuill{-1};
         constexpr std::array<const char*, 3> profileNames{ "Flat", "VR Normal", "VR Face" };
         struct Field { const char* key; const char* member; double minimum, maximum; };
         constexpr Field fields[]{
@@ -94,9 +99,31 @@ namespace SKEE::MenuConfiguration
         // Shared by Normal/Face and the picker, like the captured viewer anchor.
         // Upright by default. Only an explicit zero opts into viewer-facing pitch.
         forceVertical = !readOption || Number(Option("VR Normal", "bForceVertical"), 0, 1) != 0;
+        playerName = readOption ? readOption("VR", "sPlayerName") : std::string{};
+        if (!playerName.empty() && !VR::MenuOptionsPolicy::ValidPlayerName(playerName)) {
+            SKSE::log::warn("Ignoring invalid VR sPlayerName: use 1..255 UTF-8 bytes, no control characters");
+            playerName.clear();
+        }
+        overrideExistingPlayerName = readOption && Number(readOption("VR", "bOverrideExistingPlayerName"), 0, 1) == 1;
+        const auto quillOption = [](const char* key) {
+            const auto value = readOption ? Number(readOption("VR", key), 0, 1) : -9999;
+            return value == -9999 ? -1 : static_cast<int>(value);
+        };
+        legacyQuill = quillOption("bUseQuill");
+        steamVRQuill = quillOption("bUseQuillSteamVR");
+        ocuQuill = quillOption("bUseQuillOCU");
     }
     float PlacementHeight(bool colorPicker) { return colorPicker ? pickerHeight : menuHeight; }
     bool PlacementForceVertical() { return forceVertical; }
+    const std::string& PlayerName() { return playerName; }
+    bool OverrideExistingPlayerName() { return overrideExistingPlayerName; }
+    bool UseQuill()
+    {
+        const auto runtime = VR::ActiveRuntime();
+        const auto enabled = VR::MenuOptionsPolicy::UseQuill(runtime, steamVRQuill, ocuQuill, legacyQuill);
+        SKSE::log::info("RaceMenu VR quill: runtime={} enabled={}", VR::RuntimeName(runtime), enabled);
+        return enabled;
+    }
     void Register(RE::GFxMovie* movie, RE::GFxValue* root)
     {
         if (!readOption) return;

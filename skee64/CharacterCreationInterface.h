@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IPluginInterface.h"
+#include "VRMenuOptionsPolicy.h"
 
 #include <RE/B/BSTEvent.h>
 #include <RE/M/MenuOpenCloseEvent.h>
@@ -41,6 +42,10 @@ public:
 		RE::BSTEventSource<RE::MenuOpenCloseEvent>* source) override;
 
 	void ObserveCurrentState();
+    void BeginNewGame();
+    void BeginMainMenuNewGame();
+    void OnSaveLoading();
+    void CancelConfiguredName();
 
 private:
 	static constexpr std::uint32_t kReadyProbeAttempts = 8;
@@ -48,11 +53,13 @@ private:
 	void QueueReadyProbe(std::uint32_t attempt = 1);
 	void ProbeReady(std::uint32_t attempt);
 	FinishResult QueueFinish(std::string name, bool useCurrentName);
-	NameResult QueueName(std::string name);
-	void FinishOnGameThread(std::string name, bool useCurrentName);
+	NameResult QueueName(std::string name, bool configured = false);
+    void ApplyConfiguredName();
+	void FinishOnGameThread(std::string name, bool useCurrentName, std::uint64_t generation);
 
 	std::atomic<State> state_{ kInactive };
 	std::atomic<std::uint64_t> sessionGeneration_{ 0 };
+    SKEE::VR::MenuOptionsPolicy::NameStartIntent nameStartIntent_;
 	struct Listener { ChangeCallback callback; void* context; };
 	std::mutex snapshotMutex_;
 	std::string name_, filter_;

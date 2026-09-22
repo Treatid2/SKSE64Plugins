@@ -114,6 +114,7 @@ set(SKEE_SOURCES
     skee64/AttachmentInterface.cpp
     skee64/BodyMorphInterface.cpp
     skee64/CharacterCreationInterface.cpp
+    skee64/VRNewGameIntent.cpp
     skee64/CommandInterface.cpp
     skee64/FaceMorphInterface.cpp
     skee64/FileUtils.cpp
@@ -133,10 +134,12 @@ set(SKEE_SOURCES
     skee64/PresetInterface.cpp
 	skee64/RaceSexMenuVRInput.cpp
 	skee64/RaceSexMenuVRKeyboard.cpp
+	skee64/VRRuntime.cpp
 	skee64/MenuAppearance.cpp
 	skee64/MenuConfiguration.cpp
 	skee64/MenuExtensions.cpp
 	skee64/RaceSexMenuFaceView.cpp
+	skee64/AvatarLighting.cpp
 	skee64/SwfBytePatch.cpp
 	skee64/RaceSexMenuSwfPatch.cpp
     skee64/ScaleformCharGenFunctions.cpp
@@ -303,6 +306,12 @@ if(DEFINED ENV{Skyrim64Path})
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    add_executable(vr2_avatar_lighting_tests tests/avatar-lighting-policy.cpp)
+    target_include_directories(vr2_avatar_lighting_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_avatar_lighting_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_avatar_lighting_tests>"
+        COMMENT "Checking avatar-relative front lighting policy")
+    add_dependencies(skee64 vr2_avatar_lighting_tests)
     add_executable(vr2_inventory_preview_tests tests/inventory-preview.cpp)
     target_include_directories(vr2_inventory_preview_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
     target_link_libraries(vr2_inventory_preview_tests PRIVATE CommonLibSSE xbyak::xbyak)
@@ -381,6 +390,30 @@ if(SKEE_GAME_RUNTIME STREQUAL "VR")
         COMMAND "$<TARGET_FILE:vr2_keyboard_policy_tests>"
         COMMENT "Checking native VR keyboard UTF-8 policy")
     add_dependencies(skee64 vr2_keyboard_policy_tests)
+    add_executable(vr2_menu_options_policy_tests tests/vr-menu-options-policy.cpp)
+    target_include_directories(vr2_menu_options_policy_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_menu_options_policy_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_menu_options_policy_tests>"
+        COMMENT "Checking VR configured-name and constructor quill policy")
+    add_dependencies(skee64 vr2_menu_options_policy_tests)
+    add_executable(vr2_hook_transaction_tests tests/vr-hook-transaction.cpp)
+    target_include_directories(vr2_hook_transaction_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_hook_transaction_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_hook_transaction_tests>"
+        COMMENT "Checking transactional VR hook installation and rollback")
+    add_dependencies(skee64 vr2_hook_transaction_tests)
+    add_executable(vr2_character_session_tests tests/character-creation-session.cpp)
+    target_include_directories(vr2_character_session_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_character_session_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_character_session_tests>"
+        COMMENT "Checking queued character-creation session leases")
+    add_dependencies(skee64 vr2_character_session_tests)
+    add_executable(vr2_cooperative_restore_tests tests/cooperative-restore.cpp)
+    target_include_directories(vr2_cooperative_restore_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_cooperative_restore_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_cooperative_restore_tests>"
+        COMMENT "Checking cooperative VR placement restoration")
+    add_dependencies(skee64 vr2_cooperative_restore_tests)
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")

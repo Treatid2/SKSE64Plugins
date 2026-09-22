@@ -357,6 +357,21 @@ $raceMenuText = $raceMenuText.Replace($platformNeedle, $textEntryText + $platfor
 $appearanceText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'vr-racesex-patches\Appearance.as.inc')
 $raceMenuText = $raceMenuText.Replace($platformNeedle, $appearanceText + $platformNeedle)
 $zoomToggle = '      this.bPlayerZoom = !this.bPlayerZoom;'
+$lightToggle = '      this.bShowLight = !this.bShowLight;'
+if ([regex]::Matches($raceMenuText, [regex]::Escape($lightToggle)).Count -ne 1) { throw 'Light toggle anchor not unique.' }
+$lightReplacement = @'
+      if(_global.skse.IsVR() && _global.skse.plugins.CharGen.avatarLightingSupported)
+      {
+         if(_global.skse.plugins.CharGen.SetAvatarLighting(!this.bShowLight))
+         {
+            this.bShowLight = !this.bShowLight;
+            this.updateBottomBar();
+         }
+         else this.setStatusText("Lighting change unavailable; please try again",2000);
+         return undefined;
+      }
+'@ -replace "`n", "`r`n"
+$raceMenuText = $raceMenuText.Replace($lightToggle, $lightReplacement + "`r`n" + $lightToggle)
 if ([regex]::Matches($raceMenuText, [regex]::Escape($zoomToggle)).Count -ne 1) { throw 'Zoom toggle anchor not unique.' }
 $raceMenuText = $raceMenuText.Replace($zoomToggle, "      if(_global.skse.IsVR() && _global.skse.plugins.CharGen.SetMenuView != undefined)`r`n      {`r`n         this.RequestVRMenuView();`r`n         return undefined;`r`n      }`r`n" + $zoomToggle)
 $zoomLabel = '(!this.bPlayerZoom ? "$Zoom In" : "$Zoom Out")'

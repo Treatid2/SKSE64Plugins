@@ -40,6 +40,9 @@
 #	include "MenuBackgroundProjection.h"
 #	include "MenuPolarPlacementPolicy.h"
 #	include "MenuConfiguration.h"
+#	include "VRMenuOptionsPolicy.h"
+#	include "VRHookTransactionPolicy.h"
+#	include "CooperativeRestorePolicy.h"
 #	include "RaceSexMenuFaceView.h"
 #	include "RaceSexMenuSwfPatch.h"
 
@@ -95,16 +98,26 @@ namespace
 	float                   g_raceSexMenuWorldYaw{ 180.0F };
 	float                   g_previousUIQuadScale{ 0.0F };
 	float                   g_previousUIQuadRotation{ 0.0F };
+	float                   g_appliedUIQuadScale{ 0.0F };
+	float                   g_appliedUIQuadRotation{ 0.0F };
 	RE::Setting*            g_uiQuadScaleSetting{ nullptr };
 	RE::Setting*            g_uiQuadRotationSetting{ nullptr };
 	bool                    g_uiQuadTransformOverridden{ false };
 	RE::NiPointer<RE::NiNode>     g_raceSexMenuUINode;
 	RE::NiMatrix3                 g_previousUINodeRotation;
+	RE::NiMatrix3                 g_appliedUINodeRotation;
+	RE::NiPointer<RE::NiNode>     g_raceSexMenuUINodeParent;
 	RE::NiPointer<RE::BSTriShape> g_raceSexMenuUIQuadGeo;
 	RE::NiMatrix3                 g_previousUIQuadGeoRotation;
+	RE::NiMatrix3                 g_appliedUIQuadGeoRotation;
+	RE::NiPointer<RE::NiNode>     g_raceSexMenuUIQuadGeoParent;
 	bool                          g_uiNodeYawOverridden{ false };
 	bool                          g_uiQuadGeoYawOverridden{ false };
-	struct PolarObject { RE::NiTransform local, world; };
+	struct PolarObject
+	{
+		RE::NiTransform local, world, appliedLocal;
+		bool applied{ false };
+	};
 	PolarObject g_polarNode{}, g_polarQuad{};
 	RE::NiPoint3 g_polarU{}, g_polarV{}, g_polarUVOrigin{}, g_polarForward{};
 	RE::NiPoint3 g_polarViewerAnchor{};
@@ -112,6 +125,8 @@ namespace
 	bool g_polarCaptured{}, g_polarDescendant{};
 	RE::NiPointer<RE::NiNode> g_polarNodeIdentity;
 	RE::NiPointer<RE::BSTriShape> g_polarQuadIdentity;
+	RE::NiPointer<RE::NiNode> g_polarNodeParentIdentity;
+	RE::NiPointer<RE::NiNode> g_polarQuadParentIdentity;
 	std::atomic<unsigned> g_polarState{0}; // 0 pending, 1 applied, 2 unavailable
 	std::atomic<bool> g_polarQueued{false};
 	std::atomic<std::uint64_t> g_polarGeneration{0};
@@ -122,6 +137,29 @@ namespace
 		RE::NiMatrix3 m;
 		for (unsigned i=0; i<3; ++i) { m.entry[i][0]=u[i]; m.entry[i][1]=v[i]; m.entry[i][2]=n[i]; }
 		return m;
+	}
+	bool Near(const RE::NiPoint3& a_left, const RE::NiPoint3& a_right)
+	{
+		for (unsigned i = 0; i < 3; ++i) {
+			if (!SKEE::VR::CooperativeRestore::Near(a_left[i], a_right[i])) return false;
+		}
+		return true;
+	}
+	bool Near(const RE::NiMatrix3& a_left, const RE::NiMatrix3& a_right)
+	{
+		for (unsigned row = 0; row < 3; ++row) {
+			for (unsigned column = 0; column < 3; ++column) {
+				if (!SKEE::VR::CooperativeRestore::Near(
+						a_left.entry[row][column], a_right.entry[row][column])) return false;
+			}
+		}
+		return true;
+	}
+	bool Near(const RE::NiTransform& a_left, const RE::NiTransform& a_right)
+	{
+		return Near(a_left.rotate, a_right.rotate) &&
+			Near(a_left.translate, a_right.translate) &&
+			SKEE::VR::CooperativeRestore::Near(a_left.scale, a_right.scale);
 	}
 	bool CapturePolar(RE::NiNode* node, RE::BSTriShape* quad, RE::NiAVObject* hmd)
 	{
@@ -155,18 +193,21 @@ namespace
 		if (g_polarForward.Unitize()<0.001F) return false;
 		g_polarNode={node->local,node->world}; g_polarQuad={quad->local,quad->world};
 		g_polarNodeIdentity.reset(node); g_polarQuadIdentity.reset(quad);
+		g_polarNodeParentIdentity.reset(node->parent); g_polarQuadParentIdentity.reset(quad->parent);
 		g_polarDescendant=false;
 		for (auto* a=quad->parent;a;a=a->parent) if (a==node) g_polarDescendant=true;
 		g_polarCaptured=true;
 		return true;
 	}
-	void ApplyPolarObject(RE::NiAVObject* object, const PolarObject& base, const RE::NiMatrix3& rotation, const RE::NiPoint3& source, const RE::NiPoint3& target, float scale)
+	void ApplyPolarObject(RE::NiAVObject* object, PolarObject& base, const RE::NiMatrix3& rotation, const RE::NiPoint3& source, const RE::NiPoint3& target, float scale)
 	{
 		const auto& parent=object->parent->world;
 		object->local.rotate=parent.rotate.Transpose()*rotation*base.world.rotate;
 		object->local.scale=base.world.scale*scale/parent.scale;
 		object->local.translate=parent.rotate.Transpose()*(target+rotation*((base.world.translate-source)*scale)-parent.translate)/parent.scale;
 		RE::NiUpdateData update{0,RE::NiUpdateData::Flag::kDirty}; object->Update(update);
+		base.appliedLocal = object->local;
+		base.applied = true;
 	}
 	class PolarPlacementFunction final : public RE::GFxFunctionHandler
 	{
@@ -568,6 +609,8 @@ namespace
 		g_previousUIQuadRotation = rotationSetting->GetFloat();
 		scaleSetting->SetFloat(g_previousUIQuadScale * g_raceSexMenuWorldScale);
 		rotationSetting->SetFloat(g_raceSexMenuWorldYaw);
+		g_appliedUIQuadScale = scaleSetting->GetFloat();
+		g_appliedUIQuadRotation = rotationSetting->GetFloat();
 		g_uiQuadTransformOverridden = true;
 		SKSE::log::info(
 			"RaceSexMenu-local UI quad transform applied: scale {:.4f}->{:.4f} (x{:.3f}), rotation {:.4f}->{:.4f}",
@@ -678,9 +721,9 @@ namespace
 	// wand raycaster, so correctly queued mouse events miss every control.  The
 	// independently qualified constructor call is replaced with the purpose-built
 	// VR movie. Establish offscreen-target ownership before
-	// the menu enters UI::menuStack, but do not claim kUsesCursor: Skyrim VR's
-	// cursor menu draws the redundant quill, while the native wand ray already
-	// supplies the coordinates used by DispatchMouseButton.
+	// the menu enters UI::menuStack. The optional native quill claims cursor
+	// ownership here, never after menu-open accounting. Both pointer modes use
+	// engine coordinates supplied to DispatchMouseButton, not OCU laser state.
 	bool RaceSexMenuLoadMovieHook(
 		RE::BSScaleformManager* a_manager,
 		RE::IMenu* a_menu,
@@ -697,6 +740,9 @@ namespace
 
 		if (a_menu) {
 			a_menu->menuFlags.set(RE::UI_MENU_FLAGS::kRendersOffscreenTargets);
+            SKEE::VR::MenuOptionsPolicy::ConfigureQuill(a_menu->menuFlags,
+                SKEE::MenuConfiguration::UseQuill(), RE::UI_MENU_FLAGS::kUsesCursor,
+                RE::UI_MENU_FLAGS::kUpdateUsesCursor);
 		}
 
 		auto loaded = g_originalLoadMovie && g_originalLoadMovie(
@@ -714,8 +760,8 @@ namespace
 
 		if (loaded && a_viewOut) {
 			// Keep one movie-local mouse endpoint for the engine's native VR events.
-			// This is independent of kUsesCursor and therefore does not make Skyrim's
-			// separate quill cursor menu visible.
+			// This endpoint alone does not show the quill; bUseQuill separately
+			// selects constructor-time cursor ownership above.
 			a_viewOut->SetMouseCursorCount(1);
 		}
 
@@ -810,8 +856,10 @@ namespace SKEE::VR
 		// layouts attach the geometry elsewhere; in that case rotate the visible
 		// geometry too, but never double-rotate a descendant of uiNode.
 		g_raceSexMenuUINode.reset(uiNode);
+		g_raceSexMenuUINodeParent.reset(uiNode->parent);
 		g_previousUINodeRotation = uiNode->local.rotate;
 		uiNode->local.rotate = yaw * g_previousUINodeRotation;
+		g_appliedUINodeRotation = uiNode->local.rotate;
 		RE::NiUpdateData updateData{ 0.0F, RE::NiUpdateData::Flag::kDirty };
 		uiNode->Update(updateData);
 		g_uiNodeYawOverridden = true;
@@ -825,8 +873,10 @@ namespace SKEE::VR
 		}
 		if (!geometryDescendsFromUINode) {
 			g_raceSexMenuUIQuadGeo.reset(uiQuadGeo);
+			g_raceSexMenuUIQuadGeoParent.reset(uiQuadGeo->parent);
 			g_previousUIQuadGeoRotation = uiQuadGeo->local.rotate;
 			uiQuadGeo->local.rotate = yaw * g_previousUIQuadGeoRotation;
+			g_appliedUIQuadGeoRotation = uiQuadGeo->local.rotate;
 			uiQuadGeo->Update(updateData);
 			g_uiQuadGeoYawOverridden = true;
 		}
@@ -846,11 +896,31 @@ namespace SKEE::VR
 		g_polarGeneration.fetch_add(1);
 		if (g_polarCaptured) {
 			RE::NiUpdateData update{0,RE::NiUpdateData::Flag::kDirty};
-			if (g_polarNodeIdentity) { g_polarNodeIdentity->local=g_polarNode.local; g_polarNodeIdentity->Update(update); }
-			if (g_polarQuadIdentity && !g_polarDescendant) { g_polarQuadIdentity->local=g_polarQuad.local; g_polarQuadIdentity->Update(update); }
+			const auto restorePolar = [&](auto& a_identity, auto& a_parent, PolarObject& a_values, const char* a_label) {
+				if (!a_identity || !a_values.applied) return;
+				const bool topologyMatches = a_parent && a_identity->parent == a_parent.get();
+				if (SKEE::VR::CooperativeRestore::ShouldRestore(
+						a_identity->local,
+						a_values.appliedLocal,
+						topologyMatches,
+						[](const RE::NiTransform& a_left, const RE::NiTransform& a_right) {
+							return Near(a_left, a_right);
+						})) {
+					a_identity->local = a_values.local;
+					a_identity->Update(update);
+				} else {
+					SKSE::log::warn("RaceSexMenu-local {} polar transform changed externally; preserving the newer value", a_label);
+				}
+			};
+			restorePolar(g_polarNodeIdentity, g_polarNodeParentIdentity, g_polarNode, "UI node");
+			if (!g_polarDescendant) {
+				restorePolar(g_polarQuadIdentity, g_polarQuadParentIdentity, g_polarQuad, "UI quad");
+			}
 			g_polarCaptured=false;
 			g_polarAnchorView=~0U;
 			g_polarNodeIdentity.reset(); g_polarQuadIdentity.reset();
+			g_polarNodeParentIdentity.reset(); g_polarQuadParentIdentity.reset();
+			g_polarNode.applied = false; g_polarQuad.applied = false;
 		}
 		g_polarState.store(0);
 		// Restore movie-local handlers and listeners while its owner is still
@@ -871,33 +941,72 @@ namespace SKEE::VR
 		}
 		RE::NiUpdateData updateData{ 0.0F, RE::NiUpdateData::Flag::kDirty };
 		if (g_uiQuadGeoYawOverridden && g_raceSexMenuUIQuadGeo) {
-			g_raceSexMenuUIQuadGeo->local.rotate = g_previousUIQuadGeoRotation;
-			g_raceSexMenuUIQuadGeo->Update(updateData);
+			const bool topologyMatches = g_raceSexMenuUIQuadGeoParent &&
+				g_raceSexMenuUIQuadGeo->parent == g_raceSexMenuUIQuadGeoParent.get();
+			if (SKEE::VR::CooperativeRestore::ShouldRestore(
+					g_raceSexMenuUIQuadGeo->local.rotate,
+					g_appliedUIQuadGeoRotation,
+					topologyMatches,
+					[](const RE::NiMatrix3& a_left, const RE::NiMatrix3& a_right) { return Near(a_left, a_right); })) {
+				g_raceSexMenuUIQuadGeo->local.rotate = g_previousUIQuadGeoRotation;
+				g_raceSexMenuUIQuadGeo->Update(updateData);
+			} else {
+				SKSE::log::warn("RaceSexMenu-local UI quad yaw changed externally; preserving the newer value");
+			}
 		}
 		if (g_uiNodeYawOverridden && g_raceSexMenuUINode) {
-			g_raceSexMenuUINode->local.rotate = g_previousUINodeRotation;
-			g_raceSexMenuUINode->Update(updateData);
-			SKSE::log::info("RaceSexMenu-local projected UI yaw restored");
+			const bool topologyMatches = g_raceSexMenuUINodeParent &&
+				g_raceSexMenuUINode->parent == g_raceSexMenuUINodeParent.get();
+			if (SKEE::VR::CooperativeRestore::ShouldRestore(
+					g_raceSexMenuUINode->local.rotate,
+					g_appliedUINodeRotation,
+					topologyMatches,
+					[](const RE::NiMatrix3& a_left, const RE::NiMatrix3& a_right) { return Near(a_left, a_right); })) {
+				g_raceSexMenuUINode->local.rotate = g_previousUINodeRotation;
+				g_raceSexMenuUINode->Update(updateData);
+				SKSE::log::info("RaceSexMenu-local projected UI yaw restored");
+			} else {
+				SKSE::log::warn("RaceSexMenu-local UI node yaw changed externally; preserving the newer value");
+			}
 		}
 		g_raceSexMenuUINode.reset();
 		g_raceSexMenuUIQuadGeo.reset();
+		g_raceSexMenuUINodeParent.reset();
+		g_raceSexMenuUIQuadGeoParent.reset();
 		g_uiNodeYawOverridden = false;
 		g_uiQuadGeoYawOverridden = false;
 
-		if (!g_uiQuadTransformOverridden || !g_uiQuadScaleSetting || !g_uiQuadRotationSetting) {
-			return;
+		if (g_uiQuadTransformOverridden && g_uiQuadScaleSetting && g_uiQuadRotationSetting) {
+			auto* settings = RE::INISettingCollection::GetSingleton();
+			auto* currentScaleSetting = settings ? settings->GetSetting("fVRMenuScene_UIQuadScale:VRUI") : nullptr;
+			auto* currentRotationSetting = settings ? settings->GetSetting("fVRMenuScene_UIQuadRotation:VRUI") : nullptr;
+			const auto overriddenScale = g_uiQuadScaleSetting->GetFloat();
+			const auto overriddenRotation = g_uiQuadRotationSetting->GetFloat();
+			const bool restoreScale = SKEE::VR::CooperativeRestore::ShouldRestore(
+				overriddenScale,
+				g_appliedUIQuadScale,
+				currentScaleSetting == g_uiQuadScaleSetting,
+				[](float a_left, float a_right) { return SKEE::VR::CooperativeRestore::Near(a_left, a_right); });
+			const bool restoreRotation = SKEE::VR::CooperativeRestore::ShouldRestore(
+				overriddenRotation,
+				g_appliedUIQuadRotation,
+				currentRotationSetting == g_uiQuadRotationSetting,
+				[](float a_left, float a_right) { return SKEE::VR::CooperativeRestore::Near(a_left, a_right); });
+			if (restoreScale) {
+				g_uiQuadScaleSetting->SetFloat(g_previousUIQuadScale);
+			} else {
+				SKSE::log::warn("RaceSexMenu-local UI scale changed externally; preserving the newer value {:.4f}", overriddenScale);
+			}
+			if (restoreRotation) {
+				g_uiQuadRotationSetting->SetFloat(g_previousUIQuadRotation);
+			} else {
+				SKSE::log::warn("RaceSexMenu-local UI rotation changed externally; preserving the newer value {:.4f}", overriddenRotation);
+			}
+			SKSE::log::info(
+				"RaceSexMenu-local UI quad cleanup: scaleRestored={}, rotationRestored={}",
+				restoreScale,
+				restoreRotation);
 		}
-
-		const auto overriddenScale = g_uiQuadScaleSetting->GetFloat();
-		const auto overriddenRotation = g_uiQuadRotationSetting->GetFloat();
-		g_uiQuadScaleSetting->SetFloat(g_previousUIQuadScale);
-		g_uiQuadRotationSetting->SetFloat(g_previousUIQuadRotation);
-		SKSE::log::info(
-			"RaceSexMenu-local UI quad transform restored: scale {:.4f}->{:.4f}, rotation {:.4f}->{:.4f}",
-			overriddenScale,
-			g_uiQuadScaleSetting->GetFloat(),
-			overriddenRotation,
-			g_uiQuadRotationSetting->GetFloat());
 		g_uiQuadScaleSetting = nullptr;
 		g_uiQuadRotationSetting = nullptr;
 		g_uiQuadTransformOverridden = false;
@@ -944,9 +1053,17 @@ namespace SKEE::VR
 				originalAddress);
 			return false;
 		}
-		std::int32_t loadMovieDisplacement{};
-		std::memcpy(std::addressof(loadMovieDisplacement), reinterpret_cast<const void*>(loadMovieCallAddress + 1), sizeof(loadMovieDisplacement));
-		const auto originalLoadMovieAddress = loadMovieCallAddress + 5 + loadMovieDisplacement;
+		SKEE::VR::HookTransaction::RelativeCall qualifiedLoadMovieCall{};
+		std::memcpy(
+			qualifiedLoadMovieCall.data(),
+			reinterpret_cast<const void*>(loadMovieCallAddress),
+			qualifiedLoadMovieCall.size());
+		std::uintptr_t originalLoadMovieAddress{};
+		if (!SKEE::VR::HookTransaction::DecodeRelativeCall(
+				loadMovieCallAddress, qualifiedLoadMovieCall, originalLoadMovieAddress)) {
+			SKSE::log::error("RaceSexMenu VR LoadMovie call could not be decoded during qualification");
+			return false;
+		}
 		if (originalLoadMovieAddress < text.address() || originalLoadMovieAddress >= text.address() + text.size()) {
 			SKSE::log::error(
 				"RaceSexMenu VR LoadMovie target is outside Skyrim's text segment: 0x{:X}",
@@ -964,6 +1081,35 @@ namespace SKEE::VR
 		} else {
 			g_loadMovieTrampoline.create(64);
 		}
+		#pragma pack(push, 1)
+		struct AbsoluteJump
+		{
+			std::uint8_t opcode{ 0xFF };
+			std::uint8_t modrm{ 0x25 };
+			std::int32_t displacement{ 0 };
+			std::uint64_t address{};
+		};
+		#pragma pack(pop)
+		static_assert(sizeof(AbsoluteJump) == 14);
+		auto* loadMovieStub = g_loadMovieTrampoline.allocate<AbsoluteJump>();
+		if (!loadMovieStub) {
+			SKSE::log::error("RaceSexMenu VR could not reserve its LoadMovie absolute-jump stub");
+			return false;
+		}
+		*loadMovieStub = AbsoluteJump{
+			.opcode = 0xFF,
+			.modrm = 0x25,
+			.displacement = 0,
+			.address = reinterpret_cast<std::uint64_t>(RaceSexMenuLoadMovieHook)
+		};
+		SKEE::VR::HookTransaction::RelativeCall hookedLoadMovieCall{};
+		if (!SKEE::VR::HookTransaction::EncodeRelativeCall(
+				loadMovieCallAddress,
+				reinterpret_cast<std::uintptr_t>(loadMovieStub),
+				hookedLoadMovieCall)) {
+			SKSE::log::error("RaceSexMenu VR LoadMovie branch stub is outside rel32 range");
+			return false;
+		}
 
 		// Both original targets and every helper endpoint have been qualified before
 		// either game-memory write.  Publish the originals first so neither hook can
@@ -971,40 +1117,47 @@ namespace SKEE::VR
 		g_originalLoadMovie = reinterpret_cast<RaceSexMenuLoadMovie_t>(originalLoadMovieAddress);
 		g_originalCanProcess = reinterpret_cast<RaceSexMenuCanProcess_t>(originalAddress);
 		const auto canProcessHookAddress = reinterpret_cast<std::uintptr_t>(RaceSexMenuCanProcessHook);
-		if (!REL::safe_write(
-				handlerEntry,
-				std::addressof(canProcessHookAddress),
-				sizeof(canProcessHookAddress),
-				std::addressof(originalAddress),
-				sizeof(originalAddress))) {
-			g_originalLoadMovie = nullptr;
-			g_originalCanProcess = nullptr;
-			SKSE::log::error("RaceSexMenu VR MenuEventHandler slot changed during qualification; no pointer hook was installed");
-			return false;
-		}
-
-		const auto capturedLoadMovie = g_loadMovieTrampoline.write_call<5>(loadMovieCallAddress, RaceSexMenuLoadMovieHook);
-		g_installed = capturedLoadMovie == originalLoadMovieAddress;
-		SKSE::log::info(
-			"RaceSexMenu VR hooks installed: LoadMovie call=0x{:X} original=0x{:X}; MenuEventHandler vtable=0x{:X} original=0x{:X}",
-			loadMovieCallAddress,
-			reinterpret_cast<std::uintptr_t>(g_originalLoadMovie),
-			handlerVtable.address(),
-			reinterpret_cast<std::uintptr_t>(g_originalCanProcess));
-
-		if (!g_installed) {
-			if (!REL::safe_write(
+		const auto transaction = SKEE::VR::HookTransaction::Commit(
+			[&] {
+				return REL::safe_write(
+					handlerEntry,
+					std::addressof(canProcessHookAddress),
+					sizeof(canProcessHookAddress),
+					std::addressof(originalAddress),
+					sizeof(originalAddress));
+			},
+			[&] {
+				return REL::safe_write(
+					loadMovieCallAddress,
+					hookedLoadMovieCall.data(),
+					hookedLoadMovieCall.size(),
+					qualifiedLoadMovieCall.data(),
+					qualifiedLoadMovieCall.size());
+			},
+			[&] {
+				return REL::safe_write(
 					handlerEntry,
 					std::addressof(originalAddress),
 					sizeof(originalAddress),
 					std::addressof(canProcessHookAddress),
-					sizeof(canProcessHookAddress))) {
-				SKSE::log::critical("RaceSexMenu VR could not restore the MenuEventHandler slot after a LoadMovie installation failure");
+					sizeof(canProcessHookAddress));
+			});
+		g_installed = transaction == SKEE::VR::HookTransaction::Result::kInstalled;
+		if (g_installed) {
+			SKSE::log::info(
+				"RaceSexMenu VR hooks installed transactionally: LoadMovie call=0x{:X} original=0x{:X}; MenuEventHandler vtable=0x{:X} original=0x{:X}",
+				loadMovieCallAddress,
+				reinterpret_cast<std::uintptr_t>(g_originalLoadMovie),
+				handlerVtable.address(),
+				reinterpret_cast<std::uintptr_t>(g_originalCanProcess));
+		} else {
+			if (transaction == SKEE::VR::HookTransaction::Result::kFirstSiteRejected) {
+				SKSE::log::error("RaceSexMenu VR MenuEventHandler slot changed during qualification; no pointer hook was installed");
+			} else if (transaction == SKEE::VR::HookTransaction::Result::kSecondSiteRejectedRolledBack) {
+				SKSE::log::error("RaceSexMenu VR LoadMovie call changed during qualification; the MenuEventHandler hook was rolled back");
+			} else {
+				SKSE::log::critical("RaceSexMenu VR LoadMovie call changed and the MenuEventHandler rollback was rejected because that slot also changed");
 			}
-			SKSE::log::critical(
-				"RaceSexMenu VR LoadMovie write returned an unexpected original target after the verified vtable write: expected=0x{:X}, observed=0x{:X}",
-				originalLoadMovieAddress,
-				capturedLoadMovie);
 			g_originalLoadMovie = nullptr;
 			g_originalCanProcess = nullptr;
 		}

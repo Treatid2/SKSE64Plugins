@@ -1,6 +1,10 @@
 #include "CharacterCreationInterface.h"
 #include "CharacterNameUpdate.h"
 #include "RaceSexMenuFaceView.h"
+#include "AvatarLighting.h"
+#include "MenuConfiguration.h"
+#include "VRMenuOptionsPolicy.h"
+#include "VRSessionLeasePolicy.h"
 
 #include "SKSE/API.h"
 #include "SKSE/Interfaces.h"
@@ -15,6 +19,7 @@
 #include <RE/V/VirtualMachine.h>
 #endif
 #include <RE/R/RaceSexMenu.h>
+#include <RE/M/MainMenu.h>
 #include <RE/U/UI.h>
 #include <RE/U/UIMessageQueue.h>
 
@@ -60,7 +65,9 @@ namespace
 
 void CharacterCreationInterface::Revert()
 {
+	nameStartIntent_.Revert();
 	SKEE::FaceView::Restore();
+	SKEE::AvatarLighting::Reset();
 	sessionGeneration_.fetch_add(1);
 	state_.store(kInactive);
 	{ std::scoped_lock lock(snapshotMutex_); name_.clear(); filter_.clear(); }
@@ -200,6 +207,11 @@ RE::BSEventNotifyControl CharacterCreationInterface::ProcessEvent(
 	const RE::MenuOpenCloseEvent* a_event,
 	RE::BSTEventSource<RE::MenuOpenCloseEvent>*)
 {
+	if (a_event && a_event->opening && a_event->menuName == RE::MainMenu::MENU_NAME) {
+		CancelConfiguredName();
+		sessionGeneration_.fetch_add(1);
+		return RE::BSEventNotifyControl::kContinue;
+	}
 	if (!IsRaceSexMenuEvent(a_event)) {
 		return RE::BSEventNotifyControl::kContinue;
 	}
@@ -210,7 +222,10 @@ RE::BSEventNotifyControl CharacterCreationInterface::ProcessEvent(
 		Notify(kStateChanged);
 		QueueReadyProbe();
 	} else {
+		// Never transfer an abandoned first-creation request to a later reopen.
+		nameStartIntent_.Consume();
 		SKEE::FaceView::Restore();
+		SKEE::AvatarLighting::Reset();
 		state_.store(kInactive);
 		{ std::scoped_lock lock(snapshotMutex_); filter_.clear(); }
 		Notify(kStateChanged);
@@ -271,6 +286,7 @@ void CharacterCreationInterface::ProbeReady(std::uint32_t a_attempt)
 		}
 #endif
 		state_.store(kReady);
+		ApplyConfiguredName();
 		Notify(kStateChanged);
 		SKSE::log::info("Character-creation automation state: ready");
 		return;
@@ -294,6 +310,7 @@ ICharacterCreationInterface::FinishResult CharacterCreationInterface::QueueFinis
 	std::string a_name,
 	bool a_useCurrentName)
 {
+	const auto generation = sessionGeneration_.load();
 	auto expected = kReady;
 	if (!state_.compare_exchange_strong(expected, kFinishing)) {
 		switch (expected) {
@@ -308,26 +325,84 @@ ICharacterCreationInterface::FinishResult CharacterCreationInterface::QueueFinis
 			return kFinishNotReady;
 		}
 	}
+	if (!SKEE::VR::SessionLease::IsCurrent(
+			generation, sessionGeneration_.load(), state_.load(), kFinishing)) {
+		// A close/reopen may have completed between observing Ready and claiming
+		// Finishing. Release only the state that this request actually claimed.
+		auto finishing = kFinishing;
+		state_.compare_exchange_strong(finishing, kReady);
+		return kFinishNotReady;
+	}
 
 	auto* tasks = SKSE::GetTaskInterface();
 	if (!tasks) {
-		state_.store(kReady);
+		if (sessionGeneration_.load() == generation) {
+			auto finishing = kFinishing;
+			state_.compare_exchange_strong(finishing, kReady);
+		}
 		return kFinishTaskInterfaceUnavailable;
 	}
 
 	try {
-		tasks->AddTask([this, name = std::move(a_name), a_useCurrentName]() mutable {
-			FinishOnGameThread(std::move(name), a_useCurrentName);
+		tasks->AddTask([this, generation, name = std::move(a_name), a_useCurrentName]() mutable {
+			if (!SKEE::VR::SessionLease::IsCurrent(
+					generation, sessionGeneration_.load(), state_.load(), kFinishing)) {
+				return;
+			}
+			FinishOnGameThread(std::move(name), a_useCurrentName, generation);
 		});
 	} catch (...) {
-		state_.store(kReady);
+		if (sessionGeneration_.load() == generation) {
+			auto finishing = kFinishing;
+			state_.compare_exchange_strong(finishing, kReady);
+		}
 		return kFinishTaskInterfaceUnavailable;
 	}
 	Notify(kStateChanged);
 	return kFinishQueued;
 }
 
-ICharacterCreationInterface::NameResult CharacterCreationInterface::QueueName(std::string a_name)
+void CharacterCreationInterface::CancelConfiguredName()
+{
+    nameStartIntent_.Cancel();
+}
+
+void CharacterCreationInterface::BeginNewGame()
+{
+    nameStartIntent_.EngineNewGame();
+    // SKSE's new-game notification can precede or follow the menu-open probe.
+    ApplyConfiguredName();
+}
+
+void CharacterCreationInterface::BeginMainMenuNewGame()
+{
+    nameStartIntent_.StartFromMenu();
+    SKSE::log::info("Configured VR name: explicit main-menu New Game intent armed");
+    // The creation menu will be opened by the original callback. Do not apply
+    // to any old character/menu that happens to be present during transition.
+}
+
+void CharacterCreationInterface::OnSaveLoading()
+{
+    nameStartIntent_.SaveLoading();
+    SKSE::log::info("Configured VR name: save-load transition, explicit-start intent retained={}",
+        nameStartIntent_.Pending());
+}
+
+void CharacterCreationInterface::ApplyConfiguredName()
+{
+#if defined(ENABLE_SKYRIM_VR)
+    if (!REL::Module::IsVR() || state_.load() != kReady) return;
+    const auto& name = SKEE::MenuConfiguration::PlayerName();
+    if (SKEE::VR::MenuOptionsPolicy::ApplyPlayerName(nameStartIntent_.Pending(),
+        SKEE::MenuConfiguration::OverrideExistingPlayerName(), name)) {
+        if (QueueName(name, true) != kNameQueued)
+            SKSE::log::warn("Could not queue configured VR player name");
+    }
+#endif
+}
+
+ICharacterCreationInterface::NameResult CharacterCreationInterface::QueueName(std::string a_name, bool a_configured)
 {
 	const auto generation = sessionGeneration_.load();
 	const auto current = state_.load();
@@ -342,15 +417,22 @@ ICharacterCreationInterface::NameResult CharacterCreationInterface::QueueName(st
 		return kNameTaskInterfaceUnavailable;
 	}
 	try {
-		tasks->AddTask([this, generation, name = std::move(a_name)] {
+		tasks->AddTask([this, generation, name = std::move(a_name), a_configured] {
 			if (sessionGeneration_.load() != generation || state_.load() != kReady) return;
+            if (a_configured && !SKEE::VR::MenuOptionsPolicy::ApplyPlayerName(nameStartIntent_.Pending(),
+                SKEE::MenuConfiguration::OverrideExistingPlayerName(), name)) return;
 			auto* ui = RE::UI::GetSingleton();
 			auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
 			if (ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME) && menu) {
 				if (SKEE::UpdateCharacterNameWithoutFinishing(name.c_str()) && menu->uiMovie && REL::Module::IsVR()) {
+                    if (a_configured) {
+                        nameStartIntent_.Consume();
+                        SKSE::log::info("Configured VR name applied without finishing character creation");
+                    }
 					RE::GFxValue argument;
 					menu->uiMovie->CreateString(&argument, name.c_str());
-					menu->uiMovie->Invoke("_root.RaceSexMenuBaseInstance.RaceSexPanelsInstance.SetNameText", nullptr, &argument, 1);
+					if (!menu->uiMovie->Invoke("_root.RaceSexMenuBaseInstance.RaceSexPanelsInstance.SetNameText", nullptr, &argument, 1))
+                        SKSE::log::warn("Player name updated but RaceMenu name label callback unavailable");
 				}
 			}
 		});
@@ -360,8 +442,15 @@ ICharacterCreationInterface::NameResult CharacterCreationInterface::QueueName(st
 	return kNameQueued;
 }
 
-void CharacterCreationInterface::FinishOnGameThread(std::string a_name, bool a_useCurrentName)
+void CharacterCreationInterface::FinishOnGameThread(
+	std::string a_name,
+	bool a_useCurrentName,
+	std::uint64_t a_generation)
 {
+	if (!SKEE::VR::SessionLease::IsCurrent(
+			a_generation, sessionGeneration_.load(), state_.load(), kFinishing)) {
+		return;
+	}
 	auto* ui = RE::UI::GetSingleton();
 	auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
 	if (!ui || !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME) || !menu || !menu->uiMovie) {
@@ -387,7 +476,10 @@ void CharacterCreationInterface::FinishOnGameThread(std::string a_name, bool a_u
 
 	auto* messages = RE::UIMessageQueue::GetSingleton();
 	if (!messages) {
-		state_.store(kReady);
+		if (sessionGeneration_.load() == a_generation) {
+			auto finishing = kFinishing;
+			state_.compare_exchange_strong(finishing, kReady);
+		}
 		SKSE::log::error("Character-creation finish request could not access the UI message queue");
 		return;
 	}

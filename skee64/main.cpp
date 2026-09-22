@@ -47,6 +47,7 @@
 #include "OverlayInterface.h"
 #include "BodyMorphInterface.h"
 #include "CharacterCreationInterface.h"
+#include "VRNewGameIntent.h"
 #include "ItemDataInterface.h"
 #include "TintMaskInterface.h"
 #include "NiTransformInterface.h"
@@ -58,6 +59,7 @@
 #include "MenuConfiguration.h"
 #include "MenuExtensions.h"
 #include "RaceSexMenuFaceView.h"
+#include "AvatarLighting.h"
 #include "SkeletonExtender.h"
 #include "AttachmentInterface.h"
 #include "ActorUpdateManager.h"
@@ -464,17 +466,20 @@ std::string SKEE64GetConfigOption(const char * section, const char * key)
 	const std::string & configPath = SKEE64GetConfigPath();
 	const std::string & configPathCustom = SKEE64GetConfigPath(true);
 
-	char	resultBuf[256];
+	// Reject an overlength player name instead of accepting a truncated name.
+	char	resultBuf[4096];
+	const auto bufferSize = std::strcmp(section, "VR") == 0 && std::strcmp(key, "sPlayerName") == 0 ?
+		static_cast<std::uint32_t>(sizeof(resultBuf)) : 256U;
 	resultBuf[0] = 0;
 
 	if (!configPath.empty())
 	{
-		std::uint32_t	resultLen = REX::W32::GetPrivateProfileStringA(section, key, NULL, resultBuf, sizeof(resultBuf), configPath.c_str());
+		std::uint32_t	resultLen = REX::W32::GetPrivateProfileStringA(section, key, NULL, resultBuf, bufferSize, configPath.c_str());
 		result = resultBuf;
 	}
 	if (!configPathCustom.empty())
 	{
-		std::uint32_t	resultLen = REX::W32::GetPrivateProfileStringA(section, key, NULL, resultBuf, sizeof(resultBuf), configPathCustom.c_str());
+		std::uint32_t	resultLen = REX::W32::GetPrivateProfileStringA(section, key, NULL, resultBuf, bufferSize, configPathCustom.c_str());
 		if (resultLen > 0) // Only take custom if we have it
 			result = resultBuf;
 	}
@@ -726,6 +731,7 @@ bool RegisterCharGenScaleform(RE::GFxMovieView * view, RE::GFxValue * root)
 	SKEE::MenuExtensions::Register(view, root);
 	g_characterCreationInterface.RegisterMovie(view, root);
 	SKEE::FaceView::Register(view, root);
+	SKEE::AvatarLighting::Register(view, root);
 	SKEE::VR::RegisterRaceSexMenuInputTrace(view, root);
 	SKEE::VR::RegisterRaceSexMenuKeyboard(view, root);
 #endif
@@ -830,6 +836,9 @@ void SKSEMessageHandler(SKSE::MessagingInterface::Message * message)
 	{
 		case SKSE::MessagingInterface::kPostLoad:
 		{
+#if defined(ENABLE_SKYRIM_VR)
+			SKEE::VR::InstallNewGameIntentObserver();
+#endif
 			if (!g_enableEarlyRegistration)
 			{
 				if (auto* msg = SKSE::GetMessagingInterface()) {
@@ -847,15 +856,18 @@ void SKSEMessageHandler(SKSE::MessagingInterface::Message * message)
 		}
 		break;
 		case SKSE::MessagingInterface::kPreLoadGame:
+			g_characterCreationInterface.OnSaveLoading();
 			g_enableBodyInit = false;
 			g_tintMaskInterface.ManageTints();
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
+			if (!message->data) g_characterCreationInterface.CancelConfiguredName();
 			g_enableBodyInit = true;
 			g_tintMaskInterface.ReleaseTints();
 			break;
 		case SKSE::MessagingInterface::kNewGame:
 		{
+			g_characterCreationInterface.BeginNewGame();
 			g_actorUpdateManager.setNewGame(true);
 			break;
 		}
@@ -964,6 +976,7 @@ SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* a_intfc)
 	SKEE64GetConfigValue("VR", "fRaceSexMenuWorldScale", &g_raceSexMenuWorldScale);
 	SKEE64GetConfigValue("VR Categories", "uVisibleMask", &g_raceSexMenuCategoryMask);
 	SKEE::MenuConfiguration::Configure(SKEE64GetConfigOption);
+	SKEE::AvatarLighting::Configure(SKEE64GetConfigOption);
 	bool enableFaceView = true;
 	float faceDistance = 45;
 	SKEE64GetConfigValue("VR", "bEnableFaceView", &enableFaceView);

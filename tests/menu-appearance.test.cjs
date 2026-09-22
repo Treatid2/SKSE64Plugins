@@ -27,6 +27,7 @@ global._global={skse:{plugins:{CharGen:api}}};
 function fixture(sx=.7598724365,sy=1.357345581,ancestorX=1,ancestorY=1){
   const o=Object.assign(new MovieClip(),prototype);
   const panel=o.racePanel=new MovieClip();panel._parent=o;
+  panel.tintCount=new TextField(panel,0xFFFFFF);
   const bg=panel.ListBackground=new MovieClip();bg._parent=panel;
   Object.assign(bg,{_x:0,_y:0,_rotation:0,_xscale:sx*100,_yscale:sy*100,
     getDepth:()=>-16383,getBounds:()=>({xMin:0,xMax:562.45,yMin:0,yMax:754.4}),

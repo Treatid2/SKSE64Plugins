@@ -1,4 +1,62 @@
 
+[VR]
+; Restart Skyrim after changing these settings. Merge into your existing custom INI.
+; Optional starting name: blank = leave the normal name/keyboard workflow unchanged.
+; Applied once at character creation after New Game; it does NOT finish/close RaceMenu.
+; The confirmed main-menu New Game choice is tracked through internal starting-save loads.
+; Load/Continue cancels that choice; reopening showracemenu does not reapply the starting name.
+; Existing saved-character names are protected. You can still edit the name in the menu.
+; Use plain ASCII or UTF-8 (without BOM); 1..255 bytes, no newlines/control characters.
+; Invalid/overlength names are ignored, never truncated. Example: sPlayerName=Dragonborn
+sPlayerName=
+; 1 = also apply sPlayerName each time showracemenu opens for an existing character.
+; This explicitly renames saved characters; leave at 0 unless that is what you want.
+bOverrideExistingPlayerName=0
+; Native quill defaults depend on your active runtime, not the headset brand.
+; SteamVR: 1 = quill (default); 0 = no quill, e.g. when using your own laser provider.
+bUseQuillSteamVR=1
+; OpenComposite/OCU: 0 = no quill (default, OCU supplies lasers); 1 = native quill.
+; Enable this if OCU lasers are disabled and you want Skyrim's quill instead.
+bUseQuillOCU=0
+; The two options are independent. Only the active runtime's option is used.
+; Does not change other menus, controller bindings, poses or pointer angle.
+; Native cursor movement follows your VR controller bindings; Trigger/Accept clicks remain
+; RaceMenu-local. Restart Skyrim after edits.
+; Legacy bUseQuill (0/1) is honoured ONLY when the active runtime's new option
+; is absent/blank/invalid. New options take precedence; remove the old key when migrating.
+; An unrecognised runtime retains the legacy setting, or no quill if none is set.
+
+[VR Lighting]
+; Restart Skyrim after edits. All three temporary lights follow the edited avatar,
+; NOT the headset, menu placement or face/normal view. Light On/Off toggles the rig.
+; Enabled by default; 0 restores the original RaceMenu Papyrus light instead.
+; Lights are non-shadow-casting, neutral white and restricted to the avatar's 3D.
+; They are removed on menu close/revert, never saved or added to other menus.
+bEnableFrontRig=1
+; Coordinates are avatar-local Skyrim units, scaled with the avatar:
+; Right: positive=avatar's right, negative=left (-300..300).
+; Front: distance in front of the avatar (20..400).
+; Key/Fill Height: vertical offset from the head node (-200..400), +=above.
+; Body Height: height above the avatar's root/feet (-200..400), not from the head.
+; Radius: influence range (50..800). Brightness: 0..3; 0 disables that source.
+; Defaults provide a high face key, lower opposite-side fill and broad body fill.
+; Missing/blank/invalid values use the defaults below; lower brightness if washed out.
+fKeyRight=-35
+fKeyFront=85
+fKeyHeight=15
+fKeyRadius=220
+fKeyBrightness=1.0
+fFillRight=35
+fFillFront=80
+fFillHeight=-35
+fFillRadius=190
+fFillBrightness=0.45
+fBodyRight=0
+fBodyFront=125
+fBodyHeight=90
+fBodyRadius=300
+fBodyBrightness=0.8
+
 [Menu Profile Flat]
 ; Original framing / engine camera behavior.
 bConsolidatePanel=0

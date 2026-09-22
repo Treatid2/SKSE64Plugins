@@ -173,13 +173,18 @@
    {
       if(!this.vrTextInputActive) return undefined;
       var result = _global.skse.plugins.CharGen.PollVRTextEntry(this.vrTextInputId);
-      if(result.status == "pending") return undefined;
+      if(result.status == "pending")
+      {
+         this.ShowVRTextDraft(result.text);
+         return undefined;
+      }
       clearInterval(this.vrTextInputTimer);
       this.vrTextInputTimer = undefined;
       this.SetVRTextInputFeedback(false);
       this.vrTextInputActive = false;
       this.vrTextInputStatus = result.status;
       this.vrTextInputError = result.error;
+      this.ShowVRTextDraft(this.vrTextInputInitial);
       if(result.status == "accepted")
       {
          if(this.vrTextInputKind == "filter")
@@ -198,6 +203,16 @@
       // Cancellation/unavailability never changes the accepted name/filter.
       this.updateBottomBar();
    }
+   function ShowVRTextDraft(a_text)
+   {
+      // Display only; do not rename the actor or update the filter model until
+      // Done. This supplies SteamVR's missing editable text preview.
+      if(a_text == undefined) return undefined;
+      var button = this.vrTextInputKind == "name" ? this.vrNameButton : this.vrFilterButton;
+      if(button == undefined) return undefined;
+      button.label = this.vrTextInputKind == "name" ? "Name: " + a_text : String(a_text);
+      this.navPanel.updateButtons(false);
+   }
    function CancelVRTextInput()
    {
       if(this.vrTextInputTimer != undefined) clearInterval(this.vrTextInputTimer);
@@ -206,6 +221,7 @@
       {
          _global.skse.plugins.CharGen.CancelVRTextEntry(this.vrTextInputId);
          this.SetVRTextInputFeedback(false);
+         this.ShowVRTextDraft(this.vrTextInputInitial);
       }
       this.vrTextInputActive = false;
    }
