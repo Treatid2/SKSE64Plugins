@@ -56,6 +56,23 @@ extern FaceMorphInterface	g_morphInterface;
 extern std::uint32_t g_skseVersion;
 extern std::uint32_t g_runtimeVersion;
 
+namespace
+{
+	RE::BSTArray<RE::TintMask*>* GetPlayerTintMasks(RE::PlayerCharacter* player)
+	{
+		if (!player) {
+			return nullptr;
+		}
+
+#if defined(ENABLE_SKYRIM_VR)
+		auto* runtimeData = player->GetVRPlayerRuntimeData();
+		return runtimeData ? std::addressof(runtimeData->tintMasks) : nullptr;
+#else
+		return std::addressof(player->GetPlayerRuntimeData().tintMasks);
+#endif
+	}
+}
+
 PresetDataPtr PresetInterface::GetMappedPreset(RE::TESNPC* npc)
 {
 	std::lock_guard<std::recursive_mutex> locker(m_mappedPreset.m_lock);
@@ -210,18 +227,21 @@ void PresetInterface::ApplyPresetData(RE::Actor* actor, PresetDataPtr presetData
 		i++;
 	}
 
+	auto* playerTintMasks = actor == player ? GetPlayerTintMasks(player) : nullptr;
 	for (auto& tint : presetData->tints) {
 		float alpha = (tint.color >> 24) / 255.0;
-		auto& tintArr = player->GetPlayerRuntimeData().tintMasks;
 		RE::TintMask* tintMask = nullptr;
-		if (player == actor && tint.index < tintArr.size()) {
-			tintMask = tintArr[tint.index];
+		if (playerTintMasks && tint.index < playerTintMasks->size()) {
+			tintMask = (*playerTintMasks)[tint.index];
+		}
+		if (tintMask) {
 			tintMask->color.red = (tint.color >> 16) & 0xFF;
 			tintMask->color.green = (tint.color >> 8) & 0xFF;
 			tintMask->color.blue = tint.color & 0xFF;
 			tintMask->alpha = alpha;
-			if (tintMask->alpha > 0)
+			if (tintMask->texture && tint.name.c_str()[0] != '\0') {
 				tintMask->texture->textureName = tint.name;
+			}
 		}
 
 		if (tint.index == 0 && setSkinColor)
@@ -401,19 +421,19 @@ bool PresetInterface::SaveJsonPreset(const char* filePath, RE::Actor* actor)
 		}
 	}
 
-	std::map<std::uint8_t, std::pair<std::uint32_t, const char*>> tintList;
+	std::map<std::uint8_t, std::pair<std::uint32_t, std::string>> tintList;
 	RE::PlayerCharacter* player = RE::PlayerCharacter::GetSingleton();
 	if (actor == player)
 	{
-        auto& tintArr = player->GetPlayerRuntimeData().tintMasks;
-		for (std::uint32_t i = 0; i < tintArr.size(); i++)
+		auto* tintArr = GetPlayerTintMasks(player);
+		for (std::uint32_t i = 0; tintArr && i < tintArr->size(); i++)
 		{
-			RE::TintMask* tintMask = tintArr[i];
+			RE::TintMask* tintMask = (*tintArr)[i];
 			if (tintMask)
 			{
 				std::uint32_t tintColor = ((std::uint32_t)(tintMask->alpha * 255.0) << 24) | tintMask->color.red << 16 | tintMask->color.green << 8 | tintMask->color.blue;
-				if (tintMask->texture)
-					tintList.emplace(i, std::make_pair(tintColor, tintMask->texture->textureName.c_str()));
+				const char* textureName = tintMask->texture ? tintMask->texture->textureName.c_str() : "";
+				tintList.emplace(i, std::make_pair(tintColor, textureName));
 			}
 		}
 	}
@@ -757,7 +777,7 @@ bool PresetInterface::SaveBinaryPreset(const char* filePath)
 		typedef std::map<std::uint8_t, RE::BGSHeadPart*> PartMap;
 		typedef std::pair<std::uint8_t, RE::BGSHeadPart*> PartPair;
 
-		typedef std::pair<std::uint32_t, const char*> TintCouple;
+		typedef std::pair<std::uint32_t, std::string> TintCouple;
 		typedef std::map<std::uint8_t, TintCouple> TintMap;
 		typedef std::pair<std::uint8_t, TintCouple> TintPair;
 
@@ -787,14 +807,15 @@ bool PresetInterface::SaveBinaryPreset(const char* filePath)
 		}
 
 		TintMap tintList;
-		auto& tintArr = player->GetPlayerRuntimeData().tintMasks;
-		for (std::uint32_t i = 0; i < tintArr.size(); i++)
+		auto* tintArr = GetPlayerTintMasks(player);
+		for (std::uint32_t i = 0; tintArr && i < tintArr->size(); i++)
 		{
-			RE::TintMask* tintMask = tintArr[i];
+			RE::TintMask* tintMask = (*tintArr)[i];
 			if (tintMask)
 			{
 				std::uint32_t tintColor = ((std::uint32_t)(tintMask->alpha * 255.0) << 24) | tintMask->color.red << 16 | tintMask->color.green << 8 | tintMask->color.blue;
-				tintList.emplace(i, TintCouple(tintColor, tintMask->texture->textureName.c_str()));
+				const char* textureName = tintMask->texture ? tintMask->texture->textureName.c_str() : "";
+				tintList.emplace(i, TintCouple(tintColor, textureName));
 			}
 		}
 
@@ -848,9 +869,9 @@ bool PresetInterface::SaveBinaryPreset(const char* filePath)
 			currentFile.Write8(tmIt->first);
 			currentFile.Write32(tmIt->second.first);
 
-			std::uint16_t strLen = strlen(tmIt->second.second);
+			std::uint16_t strLen = static_cast<std::uint16_t>(tmIt->second.second.length());
 			currentFile.Write16(strLen);
-			currentFile.WriteBuf(tmIt->second.second, strLen);
+			currentFile.WriteBuf(tmIt->second.second.c_str(), strLen);
 		}
 
 		std::int64_t offset = currentFile.GetOffset();
