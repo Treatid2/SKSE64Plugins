@@ -133,8 +133,8 @@ regressions; see the immutable release verification and release notes.
   scratch staging copy.
 - CommonLib VR RaceSexMenu layout correction:
   `evidence/commonlibsse-ng-racesex-vr.patch`, also applied to staged source.
-- Skyrim VR Address Library baseline: `v0.264.0`, commit
-  `710f98387257885c963d749096a26879cface89c`.
+- Skyrim VR Address Library baseline: `v0.270.0`, commit
+  `99070858ff1b9cedf94ed45762405ff16cb61ca0`.
 - vcpkg baseline: the `builtin-baseline` in `vcpkg.json`.
 
 The Address Library version is a qualification baseline, not permission to

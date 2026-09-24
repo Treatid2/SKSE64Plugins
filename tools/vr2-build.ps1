@@ -457,7 +457,7 @@ try {
                 commit = $gitCommit
                 workingTreeStatus = $gitStatus
                 commonLibSseNgVersion = '8.0.1'
-                skyrimVrAddressLibraryBaseline = '0.264.0'
+                skyrimVrAddressLibraryBaseline = '0.270.0'
             }
             baseAssets = [ordered]@{
                 version = $BaselineAssetVersion
