@@ -518,6 +518,7 @@
       for(var i = 0; i < items.length; i++) if(items[i].vrNativeExtension) count++;
       for(var i = 0; i < categories.length; i++) if(categories[i].vrNativeExtension) catCount++;
       if(revision == this.vrExtensionsRevision && count == this.vrExtensionCount && catCount == this.vrExtensionCategoryCount) return undefined;
+      this.InvalidateVRDiagnosticControls();
       for(var i = items.length-1; i >= 0; i--) if(items[i].vrNativeExtension) items.splice(i,1);
       for(var i = categories.length-1; i >= 0; i--) if(categories[i].vrNativeExtension) categories.splice(i,1);
       var sections = api.GetMenuExtensions();

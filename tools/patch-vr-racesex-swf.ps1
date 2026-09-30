@@ -356,6 +356,22 @@ $textEntryText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'vr-race
 $raceMenuText = $raceMenuText.Replace($platformNeedle, $textEntryText + $platformNeedle)
 $appearanceText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'vr-racesex-patches\Appearance.as.inc')
 $raceMenuText = $raceMenuText.Replace($platformNeedle, $appearanceText + $platformNeedle)
+$diagnosticText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'vr-racesex-patches\Diagnostics.as.inc')
+$raceMenuText = $raceMenuText.Replace($platformNeedle, $diagnosticText + $platformNeedle)
+foreach ($method in @('SetCategoriesList','SetRaceList','SetSliders')) {
+    $needle = "   function $method()`r`n   {"
+    if ([regex]::Matches($raceMenuText, [regex]::Escape($needle)).Count -ne 1) {
+        throw "Diagnostic generation anchor missing or ambiguous: $method"
+    }
+    $extra = if ($method -eq 'SetSliders') { "`r`n      this.vrDiagnosticRebuilding = true;" } else { '' }
+    $raceMenuText = $raceMenuText.Replace($needle, $needle + "`r`n      this.InvalidateVRDiagnosticControls();" + $extra)
+}
+$initSlidersNeedle = "   function InitializeSliders()`r`n   {"
+if ([regex]::Matches($raceMenuText, [regex]::Escape($initSlidersNeedle)).Count -ne 1) { throw 'Diagnostic slider-ready anchor missing or ambiguous.' }
+$raceMenuText = $raceMenuText.Replace($initSlidersNeedle, $initSlidersNeedle + "`r`n      this.vrDiagnosticRebuilding = false;")
+$modeChangeNeedle = "   function onChangeMode(event)`r`n   {"
+if ([regex]::Matches($raceMenuText, [regex]::Escape($modeChangeNeedle)).Count -ne 1) { throw 'Diagnostic mode-change anchor missing or ambiguous.' }
+$raceMenuText = $raceMenuText.Replace($modeChangeNeedle, $modeChangeNeedle + "`r`n      this.InvalidateVRDiagnosticControls();")
 $zoomToggle = '      this.bPlayerZoom = !this.bPlayerZoom;'
 $lightToggle = '      this.bShowLight = !this.bShowLight;'
 if ([regex]::Matches($raceMenuText, [regex]::Escape($lightToggle)).Count -ne 1) { throw 'Light toggle anchor not unique.' }
