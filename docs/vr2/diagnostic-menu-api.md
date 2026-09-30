@@ -1,8 +1,11 @@
-# Live RaceMenu diagnostic controls (source candidate)
+# Live RaceMenu diagnostic controls (private testing candidate)
 
 This is a menu-owned diagnostic API for controlled reproduction, not a direct
-write to player or RaceMenu data. It is currently a source change: the matching
-VR `RaceSex_menu.swf` has **not** been compiled or installed from this change.
+write to player or RaceMenu data. The private testing candidate pairs the native
+DLL with a compiled, audited runtime movie patch. Install both together over the
+required original RaceMenu assets; do not install the broker's full compiled
+`RaceSex_menu.swf` as a loose original movie. See `private-crash-candidate.md`
+and the final artifact receipt for exact source and payload identities.
 
 The menu is `RaceSex Menu`; the GFx owner is
 `_root.RaceSexMenuBaseInstance.RaceSexPanelsInstance`. Invoke methods on that

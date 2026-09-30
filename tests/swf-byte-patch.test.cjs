@@ -81,7 +81,8 @@ if (process.env.VR2_ORIGINAL_SWF && process.env.VR2_TARGET_SWF) test('private ac
   const source=fs.readFileSync(process.env.VR2_ORIGINAL_SWF), target=fs.readFileSync(process.env.VR2_TARGET_SWF);
   const {patch,audit}=make(source,target);
   assert.deepEqual(apply(source,patch),unpack(target));
-  assert.equal(audit.literalBytes,8397);
-  assert.equal(audit.canonicalOutputSha256,'56f8bce4204bab5c466c9c9cb6b9f1a1e5a49b7cadf4b40a504e46a8aeda638b');
+  const manifest=require('../packaging/runtime-patches/racesex-menu.manifest.json');
+  assert.equal(audit.literalBytes,manifest.literalBytes);
+  assert.equal(audit.canonicalOutputSha256,manifest.canonicalOutputSha256);
   assert.deepEqual(patch,fs.readFileSync(require('node:path').join(__dirname,'../packaging/runtime-patches/racesex-menu.rmp')));
 });

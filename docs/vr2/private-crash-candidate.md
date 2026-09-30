@@ -40,6 +40,22 @@ that applying the RMP produces the canonical compiled movie byte for byte.
 The crash-testing owner deploys the final DLL, compiled shaders and matching
 RMP over the original RaceMenu assets, preserving the testing profile's INIs.
 
+The integrated recipe commit is
+`06b64159325184388b9b004b7202f9ca8a6bc4a4`. Its compiled movie has SHA-256
+`6b0f2388dff4173eaa5aebb27838eaa9a88ea9710acafd4bcd03eb24e57b2c9c`.
+The committed runtime patch has SHA-256
+`af3c5411c667bc9d725650a9460e11daf8ecdb59010691d84d9e144e9f0dc8b4`.
+Its exact canonical reconstruction is 446,494 bytes with SHA-256
+`c29074402cf78a47a01547fc80c8287b833808e083d770ca4d060c8a64335229`.
+The generator verified exact reconstruction, deterministic patch generation,
+all six diagnostic method/property names and zero original four-byte windows
+in literal runs. The final build must reproduce this movie identity.
+
+The previous development RMP, manifest, native pin source and patch test were
+preserved and independently rehashed before replacement at
+`L:\Codex\artifacts\RaceMenu-VR-2\private-20260930-live-menu-api\preserved-preintegration`.
+Unrelated worktree changes are not part of this candidate.
+
 ## Validation boundaries
 
 The broker compiles native code, shaders and the private movie. Its current
