@@ -1,4 +1,5 @@
 #include "BodyMorphInterface.h"
+#include "BodyMorphDispatchPolicy.h"
 #include <RE/N/NiTCollection.h>
 #include <REX/W32/KERNEL32.h>
 #include "OverlayInterface.h"
@@ -645,7 +646,7 @@ void MorphFileCache::ForEachShape(std::function<void(const SKEEFixedString&, con
 	}
 }
 
-void MorphFileCache::ApplyMorphs(RE::TESObjectREFR * refr, RE::NiAVObject * rootNode, bool isAttaching, bool defer)
+std::vector<NIOVTaskUpdateSkinPartition*> MorphFileCache::ApplyMorphs(RE::TESObjectREFR * refr, RE::NiAVObject * rootNode, bool isAttaching)
 {
 	using namespace concurrency;
 	using namespace std;
@@ -682,51 +683,58 @@ void MorphFileCache::ApplyMorphs(RE::TESObjectREFR * refr, RE::NiAVObject * root
 		}
 	}
 
-	{
-		static std::uint32_t mainThreadId = GetCurrentThreadId(); // captured on first call (game load, main thread)
-		defer = mainThreadId != GetCurrentThreadId();
-	}
-
-	for (auto update : partitionUpdates)
-	{
-		if (defer)
-		{
-			SKEE_AddTask(SKSE::GetTaskInterface(), update);
-		}
-		else
-		{
-			update->Run();
-			update->Dispose();
-		}
-	}
+	return partitionUpdates;
 }
 
 void MorphCache::ApplyMorphs(RE::TESObjectREFR * refr, RE::NiAVObject * rootNode, bool isAttaching, bool deferUpdate)
 {
-	std::lock_guard locker(m_lock);
+	SKEE::BodyMorphDispatch::PrepareThenDispatch(
+		m_lock,
+		[&]() {
+			std::vector<NIOVTaskUpdateSkinPartition*> partitionUpdates;
+			MorphFileCache * fileCache = nullptr;
 
-	MorphFileCache * fileCache = nullptr;
+			// Find the BODYTRI and cache it while the cache contents are stable.
+			VisitObjects(rootNode, [&](RE::NiAVObject* object) {
+				RE::NiStringExtraData* stringData = netimmerse_cast<RE::NiStringExtraData*>(object->GetExtraData("BODYTRI"));
+				if (stringData) {
+					SKEEFixedString filePath = CreateTRIPath(stringData->value);
+					CacheFile(filePath.c_str());
+					auto it = m_data.find(filePath);
+					if (it != m_data.end()) {
+						fileCache = &it->second;
+						return true;
+					}
+				}
 
-	// Find the BODYTRI and cache it
-	VisitObjects(rootNode, [&](RE::NiAVObject* object) {
-		RE::NiStringExtraData* stringData = netimmerse_cast<RE::NiStringExtraData*>(object->GetExtraData("BODYTRI"));
-		if (stringData) {
-			SKEEFixedString filePath = CreateTRIPath(stringData->value);
-			CacheFile(filePath.c_str());
-			auto it = m_data.find(filePath);
-			if (it != m_data.end()) {
-				fileCache = &it->second;
-				return true;
+				return false;
+			});
+
+			if (fileCache && !fileCache->vertexMap.empty())
+				partitionUpdates = fileCache->ApplyMorphs(refr, rootNode, isAttaching);
+
+			Shrink();
+			return partitionUpdates;
+		},
+		[&](std::vector<NIOVTaskUpdateSkinPartition*> partitionUpdates) {
+			// Preserve the legacy first-call main-thread detection, but dispatch only
+			// after PrepareThenDispatch has released MorphCache::m_lock.
+			static std::uint32_t mainThreadId = GetCurrentThreadId();
+			deferUpdate = mainThreadId != GetCurrentThreadId();
+
+			for (auto update : partitionUpdates)
+			{
+				if (deferUpdate)
+				{
+					SKEE_AddTask(SKSE::GetTaskInterface(), update);
+				}
+				else
+				{
+					update->Run();
+					update->Dispose();
+				}
 			}
-		}
-
-		return false;
-	});
-
-	if (fileCache && !fileCache->vertexMap.empty())
-		fileCache->ApplyMorphs(refr, rootNode, isAttaching, deferUpdate);
-
-	Shrink();
+		});
 }
 
 void MorphCache::UpdateMorphs(RE::TESObjectREFR * refr, bool deferUpdate)

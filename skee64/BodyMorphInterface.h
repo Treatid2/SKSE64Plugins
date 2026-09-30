@@ -201,7 +201,7 @@ class MorphFileCache
 	friend class MorphCache;
 	friend class BodyMorphInterface;
 public:
-	void ApplyMorphs(RE::TESObjectREFR * refr, RE::NiAVObject * rootNode, bool erase = false, bool defer = false);
+	std::vector<NIOVTaskUpdateSkinPartition*> ApplyMorphs(RE::TESObjectREFR * refr, RE::NiAVObject * rootNode, bool erase = false);
 	std::vector<NIOVTaskUpdateSkinPartition*> ApplyMorph(RE::TESObjectREFR * refr, RE::NiAVObject * rootNode, bool erase, const std::pair<SKEEFixedString, BodyMorphMap> & bodyMorph);
 	void ForEachShape(std::function<void(const SKEEFixedString&, const BodyMorphMap&)> functor) const;
 

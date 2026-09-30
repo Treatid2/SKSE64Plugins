@@ -170,7 +170,10 @@ namespace
 	using UpdateNPCMorphsVRFn = void (*)(RE::TESNPC*, void*, RE::BSFaceGenNiNode*);
 	using UpdateNPCMorphVRFn = void (*)(RE::TESNPC*, RE::BGSHeadPart*, RE::BSFaceGenNiNode*);
 	using UpdateHeadStateVRFn = std::int32_t (*)(RE::TESNPC*, RE::Actor*, std::uint32_t);
-	using InitializeDisplayObjectVRFn = void (*)(RE::Inventory3DManager*, RE::TESForm*, RE::TESForm*, RE::NiNode*);
+	// The patched Skyrim VR call site supplies the address of a stack-resident
+	// node holder. The flat helper uses a direct NiNode* and intentionally keeps
+	// a separate wrapper below.
+	using InitializeDisplayObjectVRFn = void (*)(RE::Inventory3DManager*, RE::TESForm*, RE::TESForm*, RE::NiNode**);
 
 	GetHeadPartsVRFn             g_getHeadPartsVROriginal{ nullptr };
 	AddRaceMenuSliderVRFn        g_addRaceMenuSliderVROriginal{ nullptr };
@@ -1418,10 +1421,10 @@ void SetInventoryItemModel_Hooked(RE::Inventory3DManager * inventoryManager, RE:
 	SetInventoryItemModel_Original(inventoryManager, baseForm, baseExtraList);
 }
 
-void InitializeDisplayObject_Hooked(RE::Inventory3DManager* inventoryManager, RE::TESForm* form1, RE::TESForm* form2, RE::NiNode* node)
+void QueueInventoryPreviewDye(RE::Inventory3DManager* inventoryManager, RE::TESForm* form, RE::NiNode* node)
 {
-	if (inventoryManager && form1 && form1->IsArmor() && node) {
-		RE::TESObjectARMO* armor = form1 ? form1->As<RE::TESObjectARMO>() : nullptr;
+	if (inventoryManager && form && form->IsArmor() && node) {
+		RE::TESObjectARMO* armor = form->As<RE::TESObjectARMO>();
 		if (armor) {
 			RE::ExtraDataList& baseExtraList = inventoryManager->originalExtra;
 
@@ -1434,17 +1437,24 @@ void InitializeDisplayObject_Hooked(RE::Inventory3DManager* inventoryManager, RE
 			g_itemDataInterface.UpdateInventoryItemDye(rankId, armor, node);
 		}
 	}
+}
 
-#if defined(ENABLE_SKYRIM_VR)
-	if (REL::Module::IsVR()) {
-		if (g_initializeDisplayObjectVROriginal) {
-			g_initializeDisplayObjectVROriginal(inventoryManager, form1, form2, node);
-		}
-		return;
-	}
-#endif
+void InitializeDisplayObject_Hooked(RE::Inventory3DManager* inventoryManager, RE::TESForm* form1, RE::TESForm* form2, RE::NiNode* node)
+{
+	QueueInventoryPreviewDye(inventoryManager, form1, node);
 	SKEE::InitializeDisplayObject(inventoryManager, form1, form2, node);
 }
+
+#if defined(ENABLE_SKYRIM_VR)
+void InitializeDisplayObjectVR_Hooked(RE::Inventory3DManager* inventoryManager, RE::TESForm* form1, RE::TESForm* form2, RE::NiNode** nodeHolder)
+{
+	auto* node = SKEE::InventoryPreview::ResolveVRDisplayNode(nodeHolder);
+	QueueInventoryPreviewDye(inventoryManager, form1, node);
+	if (g_initializeDisplayObjectVROriginal) {
+		g_initializeDisplayObjectVROriginal(inventoryManager, form1, form2, nodeHolder);
+	}
+}
+#endif
 
 void TransferItemUID_Hooked(RE::InventoryChanges* extraContainerChangeData, RE::ExtraDataList* extraList, RE::TESForm* oldForm, RE::TESForm* newForm, std::uint32_t unk1)
 {
@@ -2045,7 +2055,7 @@ namespace
 		const VRCallPatch newModel{
 			"new-inventory-model",
 			0x008B6220 + 0x1B0,
-			reinterpret_cast<std::uintptr_t>(InitializeDisplayObject_Hooked),
+			reinterpret_cast<std::uintptr_t>(InitializeDisplayObjectVR_Hooked),
 			0x008B5B40
 		};
 		std::uintptr_t newModelOriginal = 0;

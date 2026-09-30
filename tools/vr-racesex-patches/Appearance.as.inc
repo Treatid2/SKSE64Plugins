@@ -8,9 +8,18 @@
       var api = _global.skse.plugins.CharGen;
       if(api.avatarLightingSupported)
       {
-         // Disable only RaceMenu's old Papyrus light; all other lights are untouched.
-         skse.SendModEvent(_global.eventPrefix + "ToggleLight","",0);
-         api.SetAvatarLighting(Boolean(this.bShowLight));
+         // ToggleLight is not an explicit "off" command. Only send it when
+         // the legacy UI state says its Papyrus light is currently enabled;
+         // sending it for the normal default-off state leaks that light into
+         // gameplay until the process returns to the main menu.
+         var legacyLightVisible = Boolean(this.bShowLight);
+         if(legacyLightVisible)
+         {
+            skse.SendModEvent(_global.eventPrefix + "ToggleLight","",0);
+         }
+         this.vrLightDesired = legacyLightVisible;
+         this.bShowLight = false;
+         api.SetAvatarLighting(this.vrLightDesired);
       }
       var background = this.racePanel.ListBackground;
       var owner = this;
@@ -483,10 +492,15 @@
       {
          api.UpdateAvatarLighting();
          var lightState = Number(api.GetAvatarLightingState());
+         var lightVisible = lightState == 1;
+         if(Boolean(this.bShowLight) != lightVisible)
+         {
+            this.bShowLight = lightVisible;
+            this.updateBottomBar();
+            if(this.vertexEditor.enabled) this.vertexEditor.updateBottomBar();
+         }
          if(lightState == 2 && this.vrLightFault != 2)
          {
-            this.bShowLight = false;
-            this.updateBottomBar();
             this.setStatusText("Front lighting unavailable: avatar/head/scene not resolved",3000);
          }
          this.vrLightFault = lightState;

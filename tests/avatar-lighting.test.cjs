@@ -5,16 +5,21 @@ test('Light routes VR to owned rig, preserves non-VR and opt-out workflow',()=>{
   const recipe=read('tools/patch-vr-racesex-swf.ps1');
   assert.match(recipe,/Light toggle anchor not unique/);
   assert.match(recipe,/_global\.skse\.IsVR\(\) && _global\.skse\.plugins\.CharGen\.avatarLightingSupported/);
-  assert.match(recipe,/SetAvatarLighting\(!this\.bShowLight\)/);
+  assert.match(recipe,/SetAvatarLighting\(this\.vrLightDesired\)/);
   const as=read('tools/vr-racesex-patches/Appearance.as.inc');
-  assert.match(as,/SendModEvent\(_global\.eventPrefix \+ "ToggleLight","",0\)/);
+  assert.match(as,/var legacyLightVisible = Boolean\(this\.bShowLight\);\s*if\(legacyLightVisible\)\s*\{\s*skse\.SendModEvent\(_global\.eventPrefix \+ "ToggleLight","",0\);\s*\}\s*this\.vrLightDesired = legacyLightVisible/);
   assert.match(as,/api\.UpdateAvatarLighting\(\)/);
+  assert.match(as,/var lightVisible = lightState == 1/);
+  assert.match(as,/this\.bShowLight = lightVisible/);
 });
-test('Three non-shadow sources and close/revert cleanup, no controller/light hijack',()=>{
+test('Three non-shadow sources retire exact registrations after renderer queues reopen',()=>{
   const native=read('skee64/AvatarLighting.cpp');
   assert.doesNotMatch(native,/RemoveAllLights|firstPersonLight|thirdPersonLight|HmdNode|RoomNode/);
   assert.match(native,/params\.restrictedNode = node/);
-  assert.match(native,/scene->RemoveLight\(light\.get\(\)\)/);
+  assert.match(native,/rig\.registrations\[i\]\.reset\(shadow->AddLight\(light, params\)\)/);
+  assert.match(native,/!shadow->GetAllowLightRemoveQueues\(\)/);
+  assert.match(native,/shadow->RemoveLight\(registration\)/);
+  assert.doesNotMatch(native,/RemoveLight\(light\.get\(\)\)/);
   assert.equal((read('skee64/CharacterCreationInterface.cpp').match(/AvatarLighting::Reset\(\)/g)||[]).length,2);
   for (const name of ['Key','Fill','Body'])
     for (const suffix of ['Right','Front','Height','Radius','Brightness'])
@@ -23,6 +28,7 @@ test('Three non-shadow sources and close/revert cleanup, no controller/light hij
 test('Light clicks coalesce into a pending refresh instead of being rejected',()=>{
   const native=read('skee64/AvatarLighting.cpp');
   assert.match(native,/if \(!refresh\) requests\.SetDesired\(on\)/);
+  assert.match(native,/if \(refresh && !requests\.Desired\(\)\) return true/);
   assert.match(native,/if \(!requests\.TryQueue\(\)\) return true/);
   assert.match(native,/if \(!requests\.Desired\(\)\) Remove\(\)/);
   assert.doesNotMatch(native,/\[movie, on, refresh, epoch\]/);

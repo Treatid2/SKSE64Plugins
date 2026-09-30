@@ -378,11 +378,8 @@ if ([regex]::Matches($raceMenuText, [regex]::Escape($lightToggle)).Count -ne 1) 
 $lightReplacement = @'
       if(_global.skse.IsVR() && _global.skse.plugins.CharGen.avatarLightingSupported)
       {
-         if(_global.skse.plugins.CharGen.SetAvatarLighting(!this.bShowLight))
-         {
-            this.bShowLight = !this.bShowLight;
-            this.updateBottomBar();
-         }
+         this.vrLightDesired = !this.bShowLight;
+         if(_global.skse.plugins.CharGen.SetAvatarLighting(this.vrLightDesired)) this.PollVRMenuView();
          else this.setStatusText("Lighting change unavailable; please try again",2000);
          return undefined;
       }

@@ -421,6 +421,12 @@ if(SKEE_GAME_RUNTIME STREQUAL "VR")
         COMMAND "$<TARGET_FILE:vr2_cooperative_restore_tests>"
         COMMENT "Checking cooperative VR placement restoration")
     add_dependencies(skee64 vr2_cooperative_restore_tests)
+    add_executable(vr2_body_morph_dispatch_tests tests/body-morph-dispatch.cpp)
+    target_include_directories(vr2_body_morph_dispatch_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_body_morph_dispatch_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_body_morph_dispatch_tests>"
+        COMMENT "Checking body-morph cache lock release before task dispatch")
+    add_dependencies(skee64 vr2_body_morph_dispatch_tests)
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")

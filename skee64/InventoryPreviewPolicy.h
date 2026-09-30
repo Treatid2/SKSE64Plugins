@@ -5,6 +5,16 @@
 
 namespace SKEE::InventoryPreview
 {
+    // Skyrim VR's inventory-preview call site passes the address of its local
+    // node holder, not the node value used by the flat runtime. Keep this
+    // conversion explicit so the stack-resident holder can never be mistaken
+    // for a scene object.
+    template <class Node>
+    [[nodiscard]] constexpr Node* ResolveVRDisplayNode(Node* const* holder) noexcept
+    {
+        return holder ? *holder : nullptr;
+    }
+
     // The engine keeps at most seven previews (0x8B5B40). Validate the header
     // before indexing, so a stale/malformed count cannot become an unbounded
     // walk. This does not attempt to validate arbitrary foreign pointers.

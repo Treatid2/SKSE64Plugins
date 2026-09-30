@@ -73,6 +73,21 @@ int main()
         Check(!FindLoadedModel(models, target), "Null heap storage indexed");
         fixture.Header(0, 0);
 
+        // The Skyrim VR call site passes a pointer to a stack-resident node
+        // holder. Regress the exact distinction that previously sent the
+        // holder's stack address into deferred scene-graph traversal.
+        auto* previewNode = reinterpret_cast<RE::NiNode*>(0x3000);
+        RE::NiNode* nodeHolder = previewNode;
+        Check(SKEE::InventoryPreview::ResolveVRDisplayNode(&nodeHolder) == previewNode,
+            "VR display-node holder was not dereferenced exactly once");
+        Check(SKEE::InventoryPreview::ResolveVRDisplayNode(&nodeHolder) != reinterpret_cast<RE::NiNode*>(&nodeHolder),
+            "VR display-node holder address was treated as a scene object");
+        nodeHolder = nullptr;
+        Check(!SKEE::InventoryPreview::ResolveVRDisplayNode(&nodeHolder),
+            "Null node inside VR display-node holder was not preserved");
+        Check(!SKEE::InventoryPreview::ResolveVRDisplayNode<RE::NiNode>(nullptr),
+            "Null VR display-node holder was not preserved");
+
         // Same production lookup must retain the flat entry representation.
         struct FlatModels
         {
@@ -84,7 +99,7 @@ int main()
         } flat;
         flat.entries[1].itemBase = target;
         Check(FindLoadedModel(flat, target) == &flat.entries[1], "Flat preview lookup regressed");
-        std::cout << "Inventory preview tests passed: VR inline/heap ABI, poisoned flat count, bounded lookup and flat compatibility\n";
+        std::cout << "Inventory preview tests passed: VR inline/heap ABI, node-holder indirection, poisoned flat count, bounded lookup and flat compatibility\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

@@ -3,6 +3,7 @@
 #include "AvatarLighting.h"
 #include "AvatarLightingPolicy.h"
 #include "RaceSexCameraPolicy.h"
+#include "RE/B/BSLight.h"
 #include "RE/N/NiPointLight.h"
 #include "RE/S/ShadowSceneNode.h"
 #include <atomic>
@@ -16,9 +17,15 @@ namespace SKEE::AvatarLighting
         std::atomic<std::uint64_t> generation{0};
         AvatarLightingPolicy::Requests requests;
         std::atomic<unsigned> state{0}; // 0 off, 1 on, 2 unavailable
-        RE::NiPointer<RE::NiNode> avatar;
-        RE::NiPointer<RE::ShadowSceneNode> scene;
-        std::array<RE::NiPointer<RE::NiPointLight>, 3> lights;
+        struct Rig
+        {
+            RE::NiPointer<RE::NiNode> avatar;
+            RE::NiPointer<RE::ShadowSceneNode> scene;
+            std::array<RE::NiPointer<RE::NiPointLight>, 3> lights;
+            std::array<RE::NiPointer<RE::BSLight>, 3> registrations;
+            std::uint64_t retirementPasses{};
+        };
+        std::shared_ptr<Rig> activeRig;
 #if defined(ENABLE_SKYRIM_VR)
         void SetRadius(RE::NiPointLight* light, std::uint32_t radius)
         {
@@ -32,15 +39,42 @@ namespace SKEE::AvatarLighting
             attenuation(light, radius);
         }
 #endif
-        void Remove()
+        void Retire(const std::shared_ptr<Rig>& retired)
         {
-            // Only our three lights; never touch the player's torch or scene lights.
-            for (auto& light : lights) if (light) {
-                if (scene) scene->RemoveLight(light.get());
+            if (!retired) return;
+            auto* shadow = retired->scene.get();
+            if (shadow && !shadow->GetAllowLightRemoveQueues()) {
+                if (++retired->retirementPasses == 1)
+                    SKSE::log::debug("RaceMenu front lighting retirement deferred until renderer removal queues reopen");
+                else if (retired->retirementPasses % 600 == 0)
+                    SKSE::log::warn("RaceMenu front lighting still waiting for renderer removal queues after {} passes", retired->retirementPasses);
+                if (auto* tasks = SKSE::GetTaskInterface()) {
+                    try { tasks->AddTask([retired] { Retire(retired); }); }
+                    catch (...) { SKSE::log::error("Could not requeue RaceMenu front lighting retirement"); }
+                }
+                return;
+            }
+            // Remove the exact renderer registrations returned by AddLight. The
+            // NiLight lookup overload cannot find a light still in the add queue.
+            for (auto& registration : retired->registrations)
+                if (shadow && registration) shadow->RemoveLight(registration);
+            for (auto& light : retired->lights) if (light) {
                 if (light->parent) light->parent->DetachChild(light.get());
                 light.reset();
             }
-            avatar.reset(); scene.reset(); state.store(0);
+            if (retired->retirementPasses)
+                SKSE::log::debug("RaceMenu front lighting retired after {} deferred passes", retired->retirementPasses);
+        }
+        void Remove()
+        {
+            auto retired = std::exchange(activeRig, {});
+            state.store(0);
+            if (!retired) return;
+            if (auto* tasks = SKSE::GetTaskInterface()) {
+                try { tasks->AddTask([retired] { Retire(retired); }); return; }
+                catch (...) { SKSE::log::error("Could not queue RaceMenu front lighting retirement"); }
+            }
+            Retire(retired);
         }
         bool Live(RE::GFxMovie* movie, std::uint64_t epoch = generation.load())
         {
@@ -64,14 +98,19 @@ namespace SKEE::AvatarLighting
                 root->world.scale < 0.1F || root->world.scale > 10.F) { Remove(); return false; }
             const auto headLocal = CameraPolicy::LocalPoint(root->world, head->world.translate);
             if (!std::isfinite(headLocal.z) || headLocal.z < 20 || headLocal.z > 400) { Remove(); return false; }
-            if (avatar.get() != node || scene.get() != shadow) Remove();
-            avatar.reset(node); scene.reset(shadow);
-            for (std::size_t i = 0; i < lights.size(); ++i) {
+            if (!activeRig || activeRig->avatar.get() != node || activeRig->scene.get() != shadow) {
+                Remove();
+                activeRig = std::make_shared<Rig>();
+                activeRig->avatar.reset(node);
+                activeRig->scene.reset(shadow);
+            }
+            auto& rig = *activeRig;
+            for (std::size_t i = 0; i < rig.lights.size(); ++i) {
                 if (sources[i].brightness == 0) continue;
-                const bool creating = !lights[i];
-                if (creating) lights[i].reset(RE::NiPointLight::Create());
-                if (!lights[i]) { Remove(); return false; }
-                auto* light = lights[i].get();
+                const bool creating = !rig.lights[i];
+                if (creating) rig.lights[i].reset(RE::NiPointLight::Create());
+                if (!rig.lights[i]) { Remove(); return false; }
+                auto* light = rig.lights[i].get();
                 const auto position = AvatarLightingPolicy::Position(sources[i], headLocal.z);
                 light->local.translate = {position[0], position[1], position[2]};
                 light->local.rotate = RE::NiMatrix3{};
@@ -91,7 +130,8 @@ namespace SKEE::AvatarLighting
                     params.sceneGraphIndex = shadow->GetRuntimeData().sceneGraphIndex;
                     params.restrictedNode = node;
                     // No shadows, terrain/water contribution or lens flare.
-                    if (!shadow->AddLight(light, params)) { Remove(); return false; }
+                    rig.registrations[i].reset(shadow->AddLight(light, params));
+                    if (!rig.registrations[i]) { Remove(); return false; }
                 }
             }
             return true;
@@ -102,7 +142,7 @@ namespace SKEE::AvatarLighting
         bool Request(RE::GFxMovie* movie, bool on, bool refresh)
         {
             if (!enabled || !REL::Module::IsVR() || !Live(movie)) return false;
-            if (refresh && state.load() != 1) return true;
+            if (refresh && !requests.Desired()) return true;
             auto* tasks = SKSE::GetTaskInterface();
             if (!tasks) return false;
             if (!refresh) requests.SetDesired(on);
