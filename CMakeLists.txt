@@ -307,6 +307,12 @@ if(DEFINED ENV{Skyrim64Path})
 endif()
 
 if(SKEE_GAME_RUNTIME STREQUAL "VR")
+    add_executable(vr2_head_part_slider_tests tests/head-part-slider-policy.cpp)
+    target_include_directories(vr2_head_part_slider_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
+    add_custom_command(TARGET vr2_head_part_slider_tests POST_BUILD
+        COMMAND "$<TARGET_FILE:vr2_head_part_slider_tests>"
+        COMMENT "Checking zero-based custom head-part slider and no-part sentinel")
+    add_dependencies(skee64 vr2_head_part_slider_tests)
     add_executable(vr2_avatar_lighting_tests tests/avatar-lighting-policy.cpp)
     target_include_directories(vr2_avatar_lighting_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/skee64")
     add_custom_command(TARGET vr2_avatar_lighting_tests POST_BUILD
