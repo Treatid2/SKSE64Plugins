@@ -1,4 +1,4 @@
-# Automatic runtime SWF patch — candidate contract
+# Automatic runtime SWF patch — release contract
 
 ## Player experience and boundaries
 
@@ -21,13 +21,13 @@ another supported input. No heuristic matching or best-effort patching occurs.
 | --- | ---: | --- |
 | Original compressed CWS | 104279 | `3a012da4fed80637ce3257b9b2b89243befab29a4bec5316a935cea87c889963` |
 | Original canonical FWS | 372756 | `647d722b15becb418cf07af09c6e2f1d5fa5a0d2b308e23c0db12339eea4ae4e` |
-| Candidate 0.1.73 canonical output FWS | 432677 | `10a5f9ab649672884f0f8cfb8dec4616c7e345c40c288c4f7ab31868c19af66a` |
-| Runtime patch RMSWFP01 | 203334 | `61e27ca3678d42127e4fbbc33b00b8be26bdafdb21abcc79579a4c1a77446c42` |
+| 0.1.94 canonical output FWS | 448535 | `81e1e99fe951eca946c87cdbc7d78677c5a54cceeacfaac4f45606c8a71b7c69` |
+| Runtime patch RMSWFP01 | 233191 | `d9b386928fddb2a84faabfc5a0fe0872528503fb975a88fce2333aa826d222ed` |
 
-The output is the decompressed, byte-exact program/artwork of the private
-0.1.73 Sculpt single-column candidate. Its compressed counterpart has SHA-256
-`376e42dd7e2cb32a67a7edfd01711e0bf644cc4c9fd2c361d9e718c2152f6819`.
-This supersedes the original 0.1.53 recipe; headset layout qualification is pending.
+The output exactly reconstructs the privately held compiled movie for the
+live diagnostic API with snapshot-identity guards and synchronized lighting controls. Its compressed
+counterpart has SHA-256
+`56bb120d2e2450c3fa394ffdb51eb88f82375fe2fdc58be45dbe81956ddd3b13`.
 Different container compression is not an image/layout/code change.
 
 Native code pins the **whole patch hash**, so changing a hash inside a patch
@@ -38,9 +38,9 @@ no overflowing ranges, unknown opcodes, trailing records or compressed data.
 
 ## What the patch carries
 
-24,385 operations copy 424,520 output bytes from offsets in the original and
-insert only 8,157 literal bytes: **98.11% original-byte reuse**. The longest
-literal run is 13 bytes. Every literal run is audited: none contains a
+27,907 operations copy 438,007 output bytes from offsets in the original and
+insert only 10,528 literal bytes: **97.65% original-byte reuse**. The longest
+literal run is 33 bytes. Every literal run is audited: none contains a
 contiguous four-byte sequence found anywhere in the original. Offset/length
 instructions and hashes account for most of the patch's file size. No whole recompiled class, movie or graphical asset is
 shipped as an INSERT block.
