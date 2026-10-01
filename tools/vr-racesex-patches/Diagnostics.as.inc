@@ -8,6 +8,8 @@
       else
          this.vrDiagnosticGeneration = this.vrDiagnosticGeneration % 16000000 + 1;
       this.vrDiagnosticSnapshot = undefined;
+      this.vrDiagnosticIdentity = undefined;
+      this.vrDiagnosticSnapshotJson = "";
    }
    function VRDiagnosticIsSexSlider(entry)
    {
@@ -83,7 +85,13 @@
       this.vrDiagnosticResultJson = '{"ok":' + String(result.ok) +
          ',"code":' + this.VRDiagnosticJsonQuote(result.code) +
          ',"message":' + this.VRDiagnosticJsonQuote(result.message) +
-         ',"generation":' + this.VRDiagnosticJsonNumber(result.generation) + '}';
+         ',"generation":' + this.VRDiagnosticJsonNumber(result.generation) +
+         ',"requestGeneration":' + this.VRDiagnosticJsonNumber(this.vrDiagnosticRequest.generation) +
+         ',"slot":' + this.VRDiagnosticJsonNumber(this.vrDiagnosticRequest.slot) +
+         ',"value":' + this.VRDiagnosticJsonNumber(this.vrDiagnosticRequest.value) +
+         ',"raceId":' + this.VRDiagnosticJsonNumber(this.vrDiagnosticRequest.raceId) +
+         ',"sliderId":' + this.VRDiagnosticJsonNumber(this.vrDiagnosticRequest.sliderId) +
+         ',"callback":' + this.VRDiagnosticJsonQuote(this.vrDiagnosticRequest.callback) + '}';
    }
    function VRDiagnosticAvailability()
    {
@@ -104,7 +112,8 @@
    }
    function RefreshVRDiagnosticControls()
    {
-      if(this.vrDiagnosticGeneration == undefined) this.InvalidateVRDiagnosticControls();
+      // Each query publishes a new token, even if a previous query was ready.
+      this.InvalidateVRDiagnosticControls();
       var state = this.VRDiagnosticAvailability();
       var snapshot = {schema:1,status:state,generation:this.vrDiagnosticGeneration,
                       mode:this.modeSelect != undefined && this.modeSelect.getMode != undefined ? this.modeSelect.getMode() : -1,
@@ -116,6 +125,8 @@
          return 0;
       }
       var entries = this.itemList.entryList;
+      this.vrDiagnosticIdentity = {entries:this.VRDiagnosticCaptureIdentity(entries),
+         categories:this.VRDiagnosticCaptureIdentity(this.categoryList.entryList)};
       var allMask = this.categoryList.entryList[0].flag;
       var raceEnabled = this.VRDiagnosticRaceCategoryEnabled();
       for(var i = 0; i < entries.length; i++)
@@ -154,6 +165,33 @@
       }
       return false;
    }
+   function VRDiagnosticCaptureIdentity(entries)
+   {
+      // Freeze routing, range and availability values separately from the live
+      // objects. Object identity alone does not detect in-place list updates.
+      var fields = ["type","sliderID","raceID","text","callbackName","vrNativeExtension",
+         "vrProvider","vrControl","sliderMin","sliderMax","interval","position",
+         "enabled","filterFlag","flag","hasColor","isColorEnabled"];
+      var captured = [];
+      for(var i = 0; i < entries.length; i++)
+      {
+         var values = {};
+         for(var j = 0; j < fields.length; j++) values[fields[j]] = entries[i][fields[j]];
+         captured.push({entry:entries[i],values:values});
+      }
+      return captured;
+   }
+   function VRDiagnosticIdentityMatches(captured, entries)
+   {
+      if(captured == undefined || captured.length != entries.length) return false;
+      for(var i = 0; i < captured.length; i++)
+      {
+         if(captured[i].entry !== entries[i]) return false;
+         for(var field in captured[i].values)
+            if(captured[i].values[field] !== entries[i][field]) return false;
+      }
+      return true;
+   }
    function VRDiagnosticSliderOffered(entry)
    {
       // Include All: hidden extension sections deliberately keep their
@@ -179,6 +217,15 @@
       if(state != "ready") return this.VRDiagnosticReject(state,"RaceMenu sliders are not currently available: " + state);
       if(typeof generation != "number" || generation != this.vrDiagnosticGeneration)
          return this.VRDiagnosticReject("stale-generation","The live menu or slider set changed; query controls again");
+      if(this.vrDiagnosticSnapshot == undefined || this.vrDiagnosticSnapshot.status != "ready" ||
+         this.vrDiagnosticSnapshot.generation != generation || this.vrDiagnosticIdentity == undefined)
+         return this.VRDiagnosticReject("snapshot-required","Query the ready live controls before submitting an action");
+      if(!this.VRDiagnosticIdentityMatches(this.vrDiagnosticIdentity.entries,this.itemList.entryList) ||
+         !this.VRDiagnosticIdentityMatches(this.vrDiagnosticIdentity.categories,this.categoryList.entryList))
+      {
+         this.InvalidateVRDiagnosticControls();
+         return this.VRDiagnosticReject("slider-identity-changed","The published controls changed or reordered; query controls again");
+      }
       return true;
    }
    function VRDiagnosticFindEntry(slot, type)
@@ -196,7 +243,7 @@
          Math.abs(entry.sliderMin) >= 1e308 || Math.abs(entry.sliderMax) >= 1e308 ||
          value < entry.sliderMin || value > entry.sliderMax) return false;
       var step = Number(entry.interval);
-      if(isNaN(step) || step < 0) return false;
+      if(isNaN(step) || Math.abs(step) >= 1e308 || step < 0) return false;
       if(step > 0)
       {
          var units = (value - entry.sliderMin) / step;
@@ -206,9 +253,13 @@
    }
    function VRDiagnosticApplySlider(generation, slot, value, allowSex)
    {
+      this.vrDiagnosticRequest = {generation:generation,slot:slot,value:value};
       if(!this.VRDiagnosticValidateRequest(generation)) return false;
       var entry = this.VRDiagnosticFindEntry(slot,RaceMenuDefines.ENTRY_TYPE_SLIDER);
       if(entry == null) return this.VRDiagnosticReject("slider-not-live","That slot is not a live slider; query controls again");
+      this.vrDiagnosticRequest.sliderId = entry.sliderID;
+      this.vrDiagnosticRequest.callback = entry.callbackName;
+      var request = this.vrDiagnosticRequest;
       if(!this.VRDiagnosticSliderOffered(entry))
          return this.VRDiagnosticReject("slider-not-offered","The live menu offers no category for this slider");
       if(this.VRDiagnosticIsSexSlider(entry) && !allowSex)
@@ -225,6 +276,7 @@
          var api = _global.skse.plugins.CharGen;
          if(api.SetMenuExtensionValue == undefined)
             return this.VRDiagnosticReject("callback-unavailable","The extension menu callback is unavailable");
+         this.InvalidateVRDiagnosticControls();
          // This GFx callback is asynchronous and returns no acknowledgement.
          api.SetMenuExtensionValue(entry.vrProvider,entry.vrControl,value);
       }
@@ -232,6 +284,7 @@
       {
          if(entry.callbackName == undefined || entry.callbackName == "")
             return this.VRDiagnosticReject("callback-unavailable","This slider has no active menu callback");
+         this.InvalidateVRDiagnosticControls();
          // This is the same GameDelegate callback and argument pair used by
          // SliderListEntry.changedCallback, not a direct engine-data write.
          gfx.io.GameDelegate.call(entry.callbackName,[value,entry.sliderID]);
@@ -244,7 +297,7 @@
          entry.extraData = _global.skse.plugins.CharGen.GetSliderData(entry.sliderID,value);
       this.itemList.requestUpdate();
       if(this.itemList.listState.selectedEntry == entry) this.updateItemDescriptor();
-      if(allowSex) this.InvalidateVRDiagnosticControls();
+      this.vrDiagnosticRequest = request;
       this.vrDiagnosticResult = {ok:true,code:"dispatched",message:"Menu callback dispatched; observe the resulting menu state",
                                  generation:this.vrDiagnosticGeneration,slot:slot,value:value};
       this.PublishVRDiagnosticResultJson();
@@ -260,6 +313,8 @@
    }
    function SelectVRDiagnosticRace(generation, raceId)
    {
+      this.vrDiagnosticRequest = {generation:generation,raceId:raceId};
+      var request = this.vrDiagnosticRequest;
       if(!this.VRDiagnosticValidateRequest(generation)) return false;
       if(typeof raceId != "number" || isNaN(raceId) || Math.floor(raceId) != raceId)
          return this.VRDiagnosticReject("invalid-race","Race ID must be one of the enumerated live choices");
@@ -274,8 +329,9 @@
             return this.VRDiagnosticReject("already-selected","That race is already active");
          // onItemPress is the physical race-row path: it sets the active row,
          // opens the loading lifecycle and invokes Skyrim's ChangeRace callback.
-         this.onItemPress({index:i});
          this.InvalidateVRDiagnosticControls();
+         this.onItemPress({index:i});
+         this.vrDiagnosticRequest = request;
          this.vrDiagnosticResult = {ok:true,code:"dispatched",message:"Race selection dispatched; wait for the menu to rebuild",
                                     generation:this.vrDiagnosticGeneration,raceId:raceId};
          this.PublishVRDiagnosticResultJson();

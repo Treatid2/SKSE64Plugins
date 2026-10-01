@@ -1,11 +1,11 @@
-# Live RaceMenu diagnostic controls (private testing candidate)
+# Live RaceMenu diagnostic controls
 
 This is a menu-owned diagnostic API for controlled reproduction, not a direct
-write to player or RaceMenu data. The private testing candidate pairs the native
-DLL with a compiled, audited runtime movie patch. Install both together over the
+write to player or RaceMenu data. The complete add-on pairs the native
+DLL with an audited runtime movie patch. Install both together over the
 required original RaceMenu assets; do not install the broker's full compiled
-`RaceSex_menu.swf` as a loose original movie. See `private-crash-candidate.md`
-and the final artifact receipt for exact source and payload identities.
+`RaceSex_menu.swf` as a loose original movie. See `addon-receipt.json`
+and the runtime patch manifest for exact source and payload identities.
 
 The menu is `RaceSex Menu`; the GFx owner is
 `_root.RaceSexMenuBaseInstance.RaceSexPanelsInstance`. Invoke methods on that
@@ -33,8 +33,12 @@ slider rebuilds, it returns `race-change-pending` or `sliders-rebuilding`.
 4. Read `vrDiagnosticResultJson` after a setter. Its `ok` means the menu
    callback was dispatched, **not** that the native change or subsequent
    rebuild completed. Wait for the menu to settle, then refresh and verify
-   the new live state. Query again after race or sex changes; those actions
-   invalidate the old generation immediately. Category, slider-list and
+   the new live state. Every query supersedes earlier snapshots, and every
+   dispatched action consumes its snapshot before entering the callback.
+   Query again after each action. The movie compares the complete live list
+   and categories to frozen object/routing/range/value identities; reordered,
+   replaced or modified controls return `slider-identity-changed` without
+   dispatching. Category, slider-list and
    extension rebuilds, or switching tabs, invalidate it too.
 
 The snapshot has `schema`, `status`, `generation`, `mode`, `sliders`, `races`
@@ -54,7 +58,12 @@ extensions add their category flags to `All` when installed. The snapshot's
 `inAll` and `allCoversEverySlider` describe the current actual category masks;
 diagnostic callers should not switch to All to discover controls.
 
-Expected rejections include `stale-generation`, `slider-not-live`,
+Results also include `requestGeneration`, `slot`, `value`, `sliderId`,
+`callback` and `raceId` for request correlation (inapplicable numbers are null).
+`generation` is the current token, not the consumed request token.
+
+Expected rejections include `snapshot-required`, `slider-identity-changed`,
+`stale-generation`, `slider-not-live`,
 `slider-not-offered`,
 `slider-disabled`, `invalid-value`, `use-select-sex`, `not-sex-slider`,
 `race-disabled`, `race-not-live`, `already-selected`, `modal-open`,
