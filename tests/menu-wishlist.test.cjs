@@ -11,6 +11,7 @@ let sections=[{provider:'test.mod',id:'shape',label:'Shape',flag:1<<20,order:42,
 const api={GetMenuExtensionsRevision:()=>revision,GetMenuExtensions:()=>sections,GetMenuCategoryPresentation:()=>({label:'',visible:-9999,order:-9999,controlIds:''}),SetMenuExtensionValue:(...args)=>calls.push(args)};
 global._global={skse:{plugins:{CharGen:api}}};
 const o=Object.assign({},prototype,{bMenuInitialized:true,categoryList:{entryList:[{flag:2044}],requestInvalidate(){this.invalidated=true;}},itemList:{entryList:[],requestInvalidate(){this.invalidated=true;}}});
+o.InvalidateVRDiagnosticControls=()=>{}; // Owned by the separate diagnostic recipe.
 o.RefreshVRMenuExtensions();
 assert.equal(o.categoryList.entryList.length,2);
 assert.equal(o.itemList.entryList.length,1);
