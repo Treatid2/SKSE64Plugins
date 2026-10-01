@@ -1,0 +1,8 @@
+{
+  "referenceRepository": "https://github.com/expired6978/skyui",
+  "referenceCommit": "e81efba01008be5215fcd2b384512fa99d9f18e1",
+  "referencePath": "src/RaceMenu/RaceMenu.as",
+  "authorSuggestion": "https://github.com/expired6978/SKSE64Plugins/pull/66#issuecomment-5861061752",
+  "sourcePolicy": "Reference only; no upstream AS2 or FLA is included or compiled here.",
+  "distributionPolicy": "Own-source extension SWF only after compiler and live GFx qualification. Not a licence grant for upstream sources."
+}
