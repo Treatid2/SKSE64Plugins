@@ -3,7 +3,8 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
-const source=fs.readFileSync(path.join(__dirname,'../../ui/VR/SourceExtension/Lifecycle.as.inc'),'utf8');
+const movieSource=fs.readFileSync(path.join(__dirname,'../../ui/VR/SourceExtension/RaceMenuVR2Extension.as'),'utf8');
+const source=movieSource.split('// BEGIN LIFECYCLE\n')[1].split('// END LIFECYCLE')[0];
 function fixture() {
   const context={}; vm.createContext(context); vm.runInContext(source,context);
   const calls=[];

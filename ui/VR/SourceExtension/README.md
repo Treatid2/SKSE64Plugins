@@ -30,5 +30,5 @@ these wrappers must not be assumed to observe all registered callbacks until
 tested in GFx. Failure must leave the current menu operational.
 
 Source tests: `node --test tests/VR/source-extension.test.cjs`. These exercise
-the original include in a mock environment; they do not prove MTASC acceptance
+the lifecycle functions from the class source in a mock environment; they do not prove MTASC acceptance
 or live Scaleform behaviour. The released 0.1.94 package remains unchanged.
