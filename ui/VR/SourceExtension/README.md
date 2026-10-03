@@ -30,6 +30,14 @@ owner for at most 120 frames, wraps list/category/race lifecycle calls, preserve
 arguments, return values and receiver, and cooperatively restores its own hooks
 on unload. Attach is idempotent. Another module's later wrapper is not removed.
 
+One child can own only one parent lease; it must detach before changing owners.
+Optional diagnostic invalidation is exception-contained and guarded against
+synchronous re-entry, independently of the original callback's return or error.
+Detach releases ownership before notification, restores inherited methods by
+removing its instance override, and reduces retained wrappers to inactive
+original-function delegation without child/owner/lease references. These are
+source/mock-tested guarantees, not a measured live-GFx retention claim.
+
 This is a foundation for gradual feature migration, not a replacement for the
 current runtime patch. No automatic loader is enabled and no SWF is distributed
 yet. It does not expose diagnostics or change controls/layout. Diagnostic review

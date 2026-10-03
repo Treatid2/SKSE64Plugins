@@ -5,27 +5,48 @@ dynamic class RaceMenuVR2Extension extends MovieClip
 // Original AS2 extension code. Upstream RaceMenu classes are not imported.
 function SourceExtensionInvalidate(owner)
 {
-   if(typeof owner.InvalidateDiagnosticControls == "function")
-      owner.InvalidateDiagnosticControls();
-   owner.sourceExtensionRevision = Number(owner.sourceExtensionRevision || 0) + 1;
+   // Optional diagnostics must neither suppress original callbacks nor recurse.
+   if(owner == undefined || owner.sourceExtensionInvalidating) return;
+   owner.sourceExtensionInvalidating = true;
+   try
+   {
+      owner.sourceExtensionRevision = Number(owner.sourceExtensionRevision || 0) + 1;
+      if(typeof owner.InvalidateDiagnosticControls == "function")
+         owner.InvalidateDiagnosticControls();
+   }
+   catch(error)
+   {
+      owner.sourceExtensionNotificationStatus = "invalidation-failed";
+   }
+   finally
+   {
+      delete owner.sourceExtensionInvalidating;
+   }
 }
 function SourceExtensionAttach(owner)
 {
+   if(this.sourceExtensionAttaching || this.sourceExtensionDetaching) return false;
    if(owner == undefined || typeof owner.SetSliders != "function" ||
       typeof owner.SetCategoriesList != "function" ||
-      typeof owner.onItemPress != "function" || owner.modeSelect == undefined)
+      typeof owner.onItemPress != "function" || owner.modeSelect == undefined ||
+      typeof owner.hasOwnProperty != "function")
       return false;
+   // One child owns at most one lease; changing parents requires detach first.
+   if(this.sourceExtensionLease != undefined)
+      return this.sourceExtensionLease.owner === owner &&
+         owner.sourceExtensionLease === this.sourceExtensionLease;
    if(owner.sourceExtensionLease != undefined)
-      return owner.sourceExtensionLease.module === this;
-   var module = this;
-   var lease = {module:module,owner:owner,originals:{},wrappers:{}};
+      return false;
+   var lease = {module:this,owner:owner,active:true,states:{},wrappers:{}};
    var methods = ["SetSliders","SetCategoriesList","SetRaceList","onItemPress"];
    for(var i = 0; i < methods.length; i++)
    {
       var name = methods[i];
       if(typeof owner[name] != "function") continue;
-      var wrapper = this.SourceExtensionWrap(lease, name, owner[name]);
-      lease.originals[name] = owner[name];
+      var state = {active:true,lease:lease,module:this,owner:owner,
+         original:owner[name],hadOwn:owner.hasOwnProperty(name)};
+      var wrapper = this.SourceExtensionWrap(state);
+      lease.states[name] = state;
       lease.wrappers[name] = wrapper;
       owner[name] = wrapper;
    }
@@ -33,35 +54,61 @@ function SourceExtensionAttach(owner)
    owner.sourceExtensionStatus = "attached";
    owner.sourceExtensionSchema = 1;
    this.sourceExtensionLease = lease;
-   this.SourceExtensionInvalidate(owner);
-   return true;
+   // A notification cannot re-attach this child while attachment is publishing.
+   this.sourceExtensionAttaching = true;
+   try { this.SourceExtensionInvalidate(owner); }
+   finally { delete this.sourceExtensionAttaching; }
+   // Optional code may have detached synchronously during notification.
+   return this.sourceExtensionLease === lease && owner.sourceExtensionLease === lease;
 }
-function SourceExtensionWrap(lease, name, original)
+function SourceExtensionWrap(state)
 {
-   var module = this;
+   // Capture only this per-method state, not the child or full lease directly.
    return function()
    {
       // A detached wrapper retained by another component must still delegate.
-      if(lease.owner.sourceExtensionLease === lease)
-         module.SourceExtensionInvalidate(lease.owner);
-      return original.apply(this, arguments);
+      if(state.active && state.lease.active &&
+         state.owner.sourceExtensionLease === state.lease)
+         state.module.SourceExtensionInvalidate(state.owner);
+      return state.original.apply(this, arguments);
    };
 }
 function SourceExtensionDetach()
 {
    var lease = this.sourceExtensionLease;
-   if(lease == undefined) return;
+   if(lease == undefined || this.sourceExtensionDetaching) return;
+   this.sourceExtensionDetaching = true;
    var owner = lease.owner;
+   var owned = owner.sourceExtensionLease === lease;
+   lease.active = false;
    // Never overwrite a wrapper subsequently installed by another extension.
    for(var name in lease.wrappers)
-      if(owner[name] === lease.wrappers[name]) owner[name] = lease.originals[name];
-   if(owner.sourceExtensionLease === lease)
    {
-      this.SourceExtensionInvalidate(owner);
+      var state = lease.states[name];
+      state.active = false;
+      if(owner[name] === lease.wrappers[name])
+      {
+         if(state.hadOwn) owner[name] = state.original;
+         else delete owner[name];
+      }
+      // Later wrappers may retain state; only original delegation is needed.
+      delete state.module;
+      delete state.owner;
+      delete state.lease;
+   }
+   if(owned)
+   {
       delete owner.sourceExtensionLease;
       owner.sourceExtensionStatus = "detached";
    }
    delete this.sourceExtensionLease;
+   delete lease.module;
+   delete lease.owner;
+   delete lease.states;
+   delete lease.wrappers;
+   // Cleanup is complete before optional code runs; re-entry cannot reacquire.
+   try { if(owned) this.SourceExtensionInvalidate(owner); }
+   finally { delete this.sourceExtensionDetaching; }
 }
 function SourceExtensionTick()
 {
