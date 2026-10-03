@@ -4,5 +4,6 @@
   "referencePath": "src/RaceMenu/RaceMenu.as",
   "authorSuggestion": "https://github.com/expired6978/SKSE64Plugins/pull/66#issuecomment-5861061752",
   "sourcePolicy": "Reference only; no upstream AS2 or FLA is included or compiled here.",
-  "distributionPolicy": "Own-source extension SWF only after compiler and live GFx qualification. Not a licence grant for upstream sources."
+  "distributionPolicy": "Own-source extension SWF only after compiler and live GFx qualification. Not a licence grant for upstream sources.",
+  "licensingBoundary": "The fork's GPL-3.0-or-later declaration covers its original extension code, not a relicensing of Expired's original menu source or assets. Their applicable upstream terms and permissions remain unchanged. The author suggestion is not represented as a GPL grant or blanket source-redistribution permission."
 }

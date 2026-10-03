@@ -4,6 +4,26 @@ Original AS2 extension following the published RaceMenu source's owner and
 method contract. It imports no RaceMenu/SkyUI class implementation. The pinned
 reference and author suggestion are recorded in `reference.json`.
 
+## Licensing and provenance
+
+This directory contains our original extension, not Expired's original
+RaceMenu menu source. Our extension is covered by the fork's GPL-3.0-or-later
+declaration. **We have not relicensed Expired's ActionScript/FLA source, menu
+SWFs or assets under GPL-3.0.** Their applicable upstream terms and permissions
+remain unchanged.
+
+[Expired's offer](https://github.com/expired6978/SKSE64Plugins/pull/66#issuecomment-5861061752)
+suggests a side-loaded extension and provides the original source for reference.
+It is not represented here as a GPL grant or blanket permission to redistribute
+that source. The original remains in
+[Expired's repository](https://github.com/expired6978/skyui/tree/master/src/RaceMenu);
+we pin the revision in `reference.json` and do not copy or compile it here.
+See [the repository's third-party notices](../../../THIRD_PARTY_NOTICES.md)
+for the explicit licensing boundary. Distribution of an original extension
+does not grant rights to the upstream menu materials.
+
+## Extension foundation
+
 The compiled child movie is intended to be loaded under
 `_root.RaceSexMenuBaseInstance.RaceSexPanelsInstance`. It waits for a compatible
 owner for at most 120 frames, wraps list/category/race lifecycle calls, preserves

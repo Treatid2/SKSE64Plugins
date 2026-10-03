@@ -5,6 +5,31 @@ skee64 is distributed under the GNU General Public License version 3 or later
 and their licenses, as required for the corresponding-source and notice
 obligations of the GPL-3.0-or-later static link against CommonLibSSE-NG.
 
+## RaceMenu menu source and assets: separate licensing boundary
+
+The GPL-3.0-or-later declaration for skee64 and this fork's original code does
+**not** relicense Expired's original RaceMenu ActionScript/FLA source, compiled
+menu SWFs, or other separately obtained menu assets. Their applicable upstream
+terms and permissions remain unchanged; this fork grants no additional rights
+to those materials.
+
+Expired [suggested a separately compiled, side-loaded extension and linked the
+menu source for reference](https://github.com/expired6978/SKSE64Plugins/pull/66#issuecomment-5861061752).
+We do not represent that offer as a GPL licence grant or blanket permission to
+republish the original menu source. The original source remains in
+[Expired's repository](https://github.com/expired6978/skyui/tree/master/src/RaceMenu),
+not in this fork. No upstream ActionScript/FLA implementation or compiled menu
+SWF is included in this branch.
+
+`ui/VR/SourceExtension/RaceMenuVR2Extension.as` is this fork's original extension
+code, covered by its GPL-3.0-or-later declaration. It references the upstream
+menu's runtime contract without importing its implementation. See the
+[extension README](ui/VR/SourceExtension/README.md) and pinned provenance in
+`ui/VR/SourceExtension/reference.json`. Any future inclusion or distribution of
+upstream source or assets must preserve their own notices and separately
+establish the applicable permission; the repository-root `LICENSE` is not a
+substitute for that permission.
+
 ## Vendored in this repository
 
 | Component | Location | License | Notes |
