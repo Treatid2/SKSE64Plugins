@@ -137,6 +137,7 @@ public:
 	virtual void Dispose();
 
 private:
+	CDXUndoStack::Ticket m_historyTicket;
 	std::uint64_t m_editorGeneration;
 	std::uint32_t m_undoType, m_strokeType, m_vertices;
 	bool m_mirror;
@@ -153,6 +154,7 @@ public:
 	virtual void Dispose();
 
 private:
+	CDXUndoStack::Ticket m_historyTicket;
 	std::uint64_t m_editorGeneration;
 	std::uint32_t m_undoType;
 	std::int32_t	m_id;

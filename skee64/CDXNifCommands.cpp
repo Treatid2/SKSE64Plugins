@@ -228,6 +228,7 @@ void CRGNTaskUpdateModel::Dispose()
 CRGNUITaskAddStroke::CRGNUITaskAddStroke(CDXStroke * stroke, RE::BSTriShape * geometry, std::int32_t id)
 {
 	m_id = id;
+	m_historyTicket = g_undoStack.Capture(stroke, id);
 	m_editorGeneration = g_World.GetEditorGeneration();
 	m_undoType = stroke->GetUndoType();
 	m_strokeType = stroke->GetStrokeType();
@@ -243,7 +244,8 @@ void CRGNUITaskAddStroke::Dispose()
 
 void CRGNUITaskAddStroke::Run()
 {
-	if (m_editorGeneration != g_World.GetEditorGeneration() || !g_World.GetNumMeshes()) {
+	if (m_editorGeneration != g_World.GetEditorGeneration() || !g_World.GetNumMeshes() ||
+		!g_undoStack.IsCurrent(m_historyTicket)) {
 		return;
 	}
 	RE::IMenu * menu = RE::UI::GetSingleton()->GetMenu(RE::InterfaceStrings::GetSingleton()->raceSexMenu).get();
@@ -269,6 +271,10 @@ void CRGNUITaskAddStroke::Run()
 		partName.SetString(m_geometry->name.c_str());
 		obj.SetMember("part", partName);
 		RE::GFxValue args[1] = { obj };
+		// Object creation/member setters can run GFx code. Revalidate only after
+		// those calls, immediately before publishing the copied numeric identity.
+		if (m_editorGeneration != g_World.GetEditorGeneration() || !g_World.GetNumMeshes() ||
+			!g_undoStack.IsCurrent(m_historyTicket)) return;
 		menu->uiMovie->InvokeNoReturn("AddAction", args, 1);
 	}
 }
@@ -276,6 +282,7 @@ void CRGNUITaskAddStroke::Run()
 CRGNUITaskStandardCommand::CRGNUITaskStandardCommand(CDXUndoCommand * cmd, RE::BSTriShape * geometry, std::int32_t id)
 {
 	m_id = id;
+	m_historyTicket = g_undoStack.Capture(cmd, id);
 	m_editorGeneration = g_World.GetEditorGeneration();
 	m_undoType = cmd->GetUndoType();
 	m_geometry.reset(geometry);
@@ -288,7 +295,8 @@ void CRGNUITaskStandardCommand::Dispose()
 
 void CRGNUITaskStandardCommand::Run()
 {
-	if (m_editorGeneration != g_World.GetEditorGeneration() || !g_World.GetNumMeshes()) return;
+	if (m_editorGeneration != g_World.GetEditorGeneration() || !g_World.GetNumMeshes() ||
+		!g_undoStack.IsCurrent(m_historyTicket)) return;
 	RE::IMenu * menu = RE::UI::GetSingleton()->GetMenu(RE::InterfaceStrings::GetSingleton()->raceSexMenu).get();
 	if (menu && menu->uiMovie) {
 		RE::GFxValue obj;
@@ -303,6 +311,8 @@ void CRGNUITaskStandardCommand::Run()
 		partName.SetString(m_geometry->name.c_str());
 		obj.SetMember("part", partName);
 		RE::GFxValue args[1] = { obj };
+		if (m_editorGeneration != g_World.GetEditorGeneration() || !g_World.GetNumMeshes() ||
+			!g_undoStack.IsCurrent(m_historyTicket)) return;
 		menu->uiMovie->InvokeNoReturn("AddAction", args, 1);
 	}
 }

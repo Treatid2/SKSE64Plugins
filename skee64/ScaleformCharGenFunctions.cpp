@@ -738,6 +738,8 @@ void SKSEScaleform_ReleaseImportedHead::Call(RE::GFxFunctionHandler::Params& a_p
 
 void SKSEScaleform_LoadImportedHead::Call(RE::GFxFunctionHandler::Params& a_params)
 {
+	// Finish the old brush baseline/deltas before inspecting or applying imports.
+	g_World.EndPaint();
 	assert(a_params.argCount >= 1);
 	assert(a_params.args[0].GetType() == RE::GFxValue::ValueType::kArray);
 
