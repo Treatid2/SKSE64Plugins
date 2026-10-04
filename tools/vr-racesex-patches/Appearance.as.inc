@@ -1,3 +1,35 @@
+   // One-shot opening preference. No character-change callback or new timer.
+   // Categories and sliders may arrive in either order. User navigation wins.
+   function CancelVRInitialCategory()
+   {
+      this.vrInitialCategoryCancelled = true;
+      this.vrInitialCategoryDone = true;
+   }
+   function ApplyVRInitialCategory()
+   {
+      if(this.vrInitialCategoryDone || !this.vrInitialCategoriesReady || !this.bMenuInitialized) return undefined;
+      // Consume before invalidation/event dispatch, which can re-enter us.
+      this.vrInitialCategoryDone = true;
+      var api = _global.skse.plugins.CharGen;
+      if(Number(api.initialCategoryFlag) != RaceMenuDefines.CATEGORY_RACE) return undefined;
+      var list = this.categoryList;
+      if(list == undefined || list.disableInput || list.disableSelection || this.bTextEntryMode || this.vrTextInputActive) return undefined;
+      this.ApplyVRCategoryPresentation();
+      // Build the normal enumeration and clip indices before onItemPress.
+      // A suspended/filtered list is unavailable, not permission to force it.
+      list.InvalidateData();
+      if(this.vrInitialCategoryCancelled || list.disableInput || list.disableSelection) return undefined;
+      var entries = list.entryList;
+      for(var i = 0; i < entries.length; i++)
+      {
+         var entry = entries[i];
+         if(entry.flag == RaceMenuDefines.CATEGORY_RACE && entry.enabled != false && entry.filterFlag != 0 && entry.itemIndex == i && entry.clipIndex != undefined && list.getListEnumIndex(i) != undefined)
+         {
+            list.onItemPress(i,0);
+            return undefined;
+         }
+      }
+   }
    function SetupVRMenuAppearance()
    {
       if(this.vrAppearanceSetup) return undefined;

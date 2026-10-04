@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "MenuConfiguration.h"
 #include "MenuAppearancePolicy.h"
+#include "MenuInitialCategoryPolicy.h"
 #include "ScaleformUtils.h"
 #include "VRMenuOptionsPolicy.h"
 #include "VRRuntime.h"
@@ -15,6 +16,7 @@ namespace SKEE::MenuConfiguration
         ReadOption readOption{};
         float menuHeight{}, pickerHeight{};
         bool forceVertical{true};
+        InitialCategory initialCategory{InitialCategory::All};
         std::string playerName;
         bool overrideExistingPlayerName{};
         int legacyQuill{-1}, steamVRQuill{-1}, ocuQuill{-1};
@@ -89,6 +91,9 @@ namespace SKEE::MenuConfiguration
     void Configure(ReadOption read)
     {
         readOption = read;
+        const auto initial = ParseInitialCategory(readOption ? readOption("Menu Appearance", "sInitialCategory") : std::string{});
+        initialCategory = initial.category;
+        if (!initial.valid) SKSE::log::warn("Ignoring invalid sInitialCategory: supported values are All and Race; using All");
         auto height = [](const char* key) {
             if (!readOption) return 0.F;
             const auto value = Number(Option("VR Normal", key), -150, 150);
@@ -127,6 +132,7 @@ namespace SKEE::MenuConfiguration
     void Register(RE::GFxMovie* movie, RE::GFxValue* root)
     {
         if (!readOption) return;
+        ScaleformUtils::RegisterNumber(root, "initialCategoryFlag", static_cast<unsigned>(initialCategory));
         RE::GFxValue profiles;
         movie->CreateObject(&profiles);
         for (const auto* name : profileNames) {

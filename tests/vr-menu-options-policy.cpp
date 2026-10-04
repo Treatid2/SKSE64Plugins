@@ -1,4 +1,5 @@
 #include "VRMenuOptionsPolicy.h"
+#include "MenuInitialCategoryPolicy.h"
 #include <iostream>
 #include <string>
 #include <cstdint>
@@ -24,6 +25,21 @@ int main()
     };
     using SKEE::VR::Runtime;
     using SKEE::VR::RuntimeForModules;
+    using SKEE::MenuConfiguration::InitialCategory;
+    using SKEE::MenuConfiguration::ParseInitialCategory;
+    for (const auto text : {"", "All", "all", " ALL \t", "\r\n"}) {
+        const auto option = ParseInitialCategory(text);
+        check(option.valid && option.category == InitialCategory::All, "default/trimmed All category");
+    }
+    for (const auto text : {"Race", "race", "rAcE", " \tRace\r\n"}) {
+        const auto option = ParseInitialCategory(text);
+        check(option.valid && option.category == InitialCategory::Race, "trimmed case-insensitive Race category");
+    }
+    for (const auto text : {"Body", "2", "$Race", "Race extra", "Ra ce", "Races", "Race;comment"}) {
+        const auto option = ParseInitialCategory(text);
+        check(!option.valid && option.category == InitialCategory::All, "unknown token falls back to All");
+    }
+    check(!ParseInitialCategory(std::string_view("Race\0", 5)).valid, "embedded NUL is not a Race token");
     check(RuntimeForModules(false, true, false, true, true) == Runtime::SteamVR, "direct SteamVR implementation");
     check(RuntimeForModules(false, false, false, true, true) == Runtime::SteamVR, "SkyrimVRTools proxy over SteamVR loader");
     check(RuntimeForModules(true, false, true, true, false) == Runtime::OpenComposite, "direct OCU implementation");

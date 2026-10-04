@@ -369,9 +369,15 @@ foreach ($method in @('SetCategoriesList','SetRaceList','SetSliders')) {
 $initSlidersNeedle = "   function InitializeSliders()`r`n   {"
 if ([regex]::Matches($raceMenuText, [regex]::Escape($initSlidersNeedle)).Count -ne 1) { throw 'Diagnostic slider-ready anchor missing or ambiguous.' }
 $raceMenuText = $raceMenuText.Replace($initSlidersNeedle, $initSlidersNeedle + "`r`n      this.vrDiagnosticRebuilding = false;")
+$initialSlidersReady = "      this.itemList.requestInvalidate();`r`n      clearInterval(this._updateInterval);`r`n      delete this._updateInterval;"
+if ([regex]::Matches($raceMenuText, [regex]::Escape($initialSlidersReady)).Count -ne 1) { throw 'Initial category slider-ready anchor missing or ambiguous.' }
+$raceMenuText = $raceMenuText.Replace($initialSlidersReady, $initialSlidersReady + "`r`n      if(_global.skse.IsVR()) this.ApplyVRInitialCategory();")
+$initialCategoryPress = "   function onCategoryPress(a_event)`r`n   {"
+if ([regex]::Matches($raceMenuText, [regex]::Escape($initialCategoryPress)).Count -ne 1) { throw 'Initial category navigation anchor missing or ambiguous.' }
+$raceMenuText = $raceMenuText.Replace($initialCategoryPress, $initialCategoryPress + "`r`n      if(_global.skse.IsVR()) this.CancelVRInitialCategory();")
 $modeChangeNeedle = "   function onChangeMode(event)`r`n   {"
 if ([regex]::Matches($raceMenuText, [regex]::Escape($modeChangeNeedle)).Count -ne 1) { throw 'Diagnostic mode-change anchor missing or ambiguous.' }
-$raceMenuText = $raceMenuText.Replace($modeChangeNeedle, $modeChangeNeedle + "`r`n      this.InvalidateVRDiagnosticControls();")
+$raceMenuText = $raceMenuText.Replace($modeChangeNeedle, $modeChangeNeedle + "`r`n      this.InvalidateVRDiagnosticControls();`r`n      if(_global.skse.IsVR() && event.index != 0) this.CancelVRInitialCategory();")
 $zoomToggle = '      this.bPlayerZoom = !this.bPlayerZoom;'
 $lightToggle = '      this.bShowLight = !this.bShowLight;'
 if ([regex]::Matches($raceMenuText, [regex]::Escape($lightToggle)).Count -ne 1) { throw 'Light toggle anchor not unique.' }
@@ -392,6 +398,9 @@ $raceMenuText = $raceMenuText.Replace($zoomLabel, '(_global.skse.IsVR() && _glob
 $categoryFinish = '      skse.SendModEvent(_global.eventPrefix + "CategoriesInitialized");'
 if ([regex]::Matches($raceMenuText, [regex]::Escape($categoryFinish)).Count -ne 1) { throw 'Category finish callback anchor not unique.' }
 $raceMenuText = $raceMenuText.Replace($categoryFinish, "      if(_global.skse.IsVR()) this.ApplyVRCategoryPresentation();`r`n" + $categoryFinish)
+$initialCategoriesReady = $categoryFinish + "`r`n      this.categoryList.requestInvalidate();"
+if ([regex]::Matches($raceMenuText, [regex]::Escape($initialCategoriesReady)).Count -ne 1) { throw 'Initial category categories-ready anchor missing or ambiguous.' }
+$raceMenuText = $raceMenuText.Replace($initialCategoriesReady, $initialCategoriesReady + "`r`n      if(_global.skse.IsVR())`r`n      {`r`n         this.vrInitialCategoriesReady = true;`r`n         this.ApplyVRInitialCategory();`r`n      }")
 $nameUpdateNeedle = '      this.bottomBar.playerInfo.PlayerName.SetText(astrPlayerName);'
 if ([regex]::Matches($raceMenuText, [regex]::Escape($nameUpdateNeedle)).Count -ne 1) { throw 'Name text callback anchor not unique.' }
 $raceMenuText = $raceMenuText.Replace($nameUpdateNeedle, $nameUpdateNeedle + "`r`n      if(_global.skse.IsVR()) this.UpdateVRNameButton(astrPlayerName);")
@@ -636,6 +645,11 @@ if ($verifiedRaceMenuText -notmatch 'SetupVRTextButtons' -or
     $verifiedRaceMenuText -notmatch 'onSearchClicked' -or
     $verifiedRaceMenuText -notmatch 'IsVRCategoryVisible') {
     throw 'The rebuilt SWF did not retain the VR text-target/category extensions.'
+}
+foreach ($initialCategoryBoundary in @('ApplyVRInitialCategory', 'CancelVRInitialCategory', 'vrInitialCategoriesReady', 'initialCategoryFlag', 'getListEnumIndex')) {
+    if ($verifiedRaceMenuText -notmatch [regex]::Escape($initialCategoryBoundary)) {
+        throw "The rebuilt SWF did not retain the initial category boundary: $initialCategoryBoundary"
+    }
 }
 foreach ($requiredTraceFunction in @('ArmVRInputTrace', 'DisarmVRInputTrace', 'ReadVRInputTargetSnapshot', 'onPressKind', 'centerShapeHit', 'original.apply', 'RecordVRMovieInput', 'Mouse.removeListener')) {
     if (-not $verifiedRaceMenuText.Contains($requiredTraceFunction)) {

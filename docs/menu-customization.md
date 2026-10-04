@@ -5,6 +5,18 @@ build- and surrogate-tested, not a qualified SE/AE/VR standalone release.
 
 ## Configuration
 
+`sInitialCategory` in `[Menu Appearance]` selects the initial VR slider category
+each time RaceMenu opens. Supported tokens are `All` (default) and `Race`,
+case-insensitive with surrounding whitespace ignored. Set `sInitialCategory=Race`
+in `skee64_custom.ini` to open on Race. Missing, empty or invalid values retain
+All; an unknown value also produces a concise warning. Restart Skyrim after editing.
+This global preference is not a per-view profile setting. Selection uses stable
+category identity and the normal menu callback, not a translated heading or
+numeric tab position. Hidden, restricted or otherwise unavailable Race leaves
+the stock All selection untouched. It is applied once after categories/sliders
+initialise, never on race/sex rebuilds or returning from Sculpt/Presets. Early
+user navigation takes precedence; blocked input is never forced or retried.
+
 `[Menu Appearance]` is the shared default. `[Menu Profile VR Normal]` and
 `[Menu Profile VR Face]` override individual supplied values. Empty values keep
 shared defaults/original artwork. `Flat` reserves the original flat layout;
