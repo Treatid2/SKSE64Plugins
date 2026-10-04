@@ -15,19 +15,24 @@ scripts and artwork still come from the player's original installation.
 The add-on does not bundle them. A modified loose VR SWF is a conflict, not
 another supported input. No heuristic matching or best-effort patching occurs.
 
-## Exact release identities
+## Exact candidate identities
+
+This branch pairs the initial All/Race category preference with its compiled
+movie. It is an unstamped, unreleased candidate; the retained 0.1.94 package
+version is not an assertion that this candidate has been published.
 
 | Item | Bytes | SHA-256 |
 | --- | ---: | --- |
 | Original compressed CWS | 104279 | `3a012da4fed80637ce3257b9b2b89243befab29a4bec5316a935cea87c889963` |
 | Original canonical FWS | 372756 | `647d722b15becb418cf07af09c6e2f1d5fa5a0d2b308e23c0db12339eea4ae4e` |
-| 0.1.94 canonical output FWS | 448535 | `81e1e99fe951eca946c87cdbc7d78677c5a54cceeacfaac4f45606c8a71b7c69` |
-| Runtime patch RMSWFP01 | 233191 | `d9b386928fddb2a84faabfc5a0fe0872528503fb975a88fce2333aa826d222ed` |
+| Initial-category canonical output FWS | 449697 | `8d829b7a783d7741104de457549b197e118ce76b84cf8b5d01e21c202f283aa4` |
+| Runtime patch RMSWFP01 | 235075 | `5168a2df288ca7576240324ef2c6900f7e835ab35b2bbee4edcfabbecf86cca2` |
 
 The output exactly reconstructs the privately held compiled movie for the
-live diagnostic API with snapshot-identity guards and synchronized lighting controls. Its compressed
+initial All/Race category preference, retaining the diagnostic API's
+snapshot-identity guards and synchronized lighting controls. Its compressed
 counterpart has SHA-256
-`56bb120d2e2450c3fa394ffdb51eb88f82375fe2fdc58be45dbe81956ddd3b13`.
+`bae680eb54a9fcb039e6222cb2ecbef40ca7bdfc8487f59951b32151966619d4`.
 Different container compression is not an image/layout/code change.
 
 Native code pins the **whole patch hash**, so changing a hash inside a patch
@@ -38,8 +43,8 @@ no overflowing ranges, unknown opcodes, trailing records or compressed data.
 
 ## What the patch carries
 
-27,907 operations copy 438,007 output bytes from offsets in the original and
-insert only 10,528 literal bytes: **97.65% original-byte reuse**. The longest
+28,106 operations copy 439,200 output bytes from offsets in the original and
+insert only 10,497 literal bytes: **97.67% original-byte reuse**. The longest
 literal run is 33 bytes. Every literal run is audited: none contains a
 contiguous four-byte sequence found anywhere in the original. Offset/length
 instructions and hashes account for most of the patch's file size. No whole recompiled class, movie or graphical asset is
