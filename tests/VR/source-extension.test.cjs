@@ -172,3 +172,156 @@ test('optional race-list callback can be absent without changing the owner shape
   assert.equal(Object.hasOwn(owner,'SetRaceList'),false);
   module.SourceExtensionDetach();assert.equal(Object.hasOwn(owner,'SetRaceList'),false);
 });
+
+function assertReleased(module,owner) {
+  assert.equal(module.sourceExtensionLease,undefined);
+  assert.equal(module.sourceExtensionAttaching,undefined);
+  assert.equal(module.sourceExtensionDetaching,undefined);
+  assert.equal(owner.sourceExtensionLease,undefined);
+}
+
+test('throwing second-method setter rolls back the first wrapper and permits restart',()=>{
+  const {module,owner}=fixture(),original=owner.SetSliders;
+  let value=owner.SetCategoriesList,fail=true;
+  Object.defineProperty(owner,'SetCategoriesList',{configurable:true,get(){return value;},
+    set(next){if(fail)throw Error('setter');value=next;}});
+  assert.equal(module.SourceExtensionAttach(owner),false);
+  assert.equal(owner.SetSliders,original);assertReleased(module,owner);
+  assert.equal(module.sourceExtensionStatus,'attachment-failed');
+  fail=false;assert.equal(module.SourceExtensionAttach(owner),true);
+  module.SourceExtensionDetach();assertReleased(module,owner);
+});
+
+test('silently refused wrapper assignment fails admission and can be repaired',()=>{
+  const {module,owner}=fixture(),original=owner.SetSliders,category=owner.SetCategoriesList;
+  Object.defineProperty(owner,'SetCategoriesList',{value:category,writable:false,configurable:true});
+  assert.equal(module.SourceExtensionAttach(owner),false);
+  assert.equal(owner.SetSliders,original);assertReleased(module,owner);
+  Object.defineProperty(owner,'SetCategoriesList',{writable:true});
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});
+
+test('setter re-entry cannot create a second transaction and setup detach cancels',()=>{
+  const {module,owner}=fixture(),other=fixture().owner;
+  let value=owner.SetSliders,nested,assignments=0,cancel=false;
+  Object.defineProperty(owner,'SetSliders',{configurable:true,get(){return value;},set(next){
+    assignments++;nested=module.SourceExtensionAttach(other);value=next;
+    if(cancel)module.SourceExtensionDetach();
+  }});
+  assert.equal(module.SourceExtensionAttach(owner),true);assert.equal(nested,false);
+  assert.equal(assignments,1);assert.equal(other.sourceExtensionLease,undefined);
+  module.SourceExtensionDetach();
+  cancel=true;assert.equal(module.SourceExtensionAttach(owner),false);assertReleased(module,owner);
+  cancel=false;assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});
+
+test('owner getter exceptions and getter attach re-entry clear the early guard',()=>{
+  const {module,owner}=fixture();let fail=true,nested;
+  Object.defineProperty(owner,'modeSelect',{configurable:true,get(){
+    nested=module.SourceExtensionAttach(owner);if(fail)throw Error('getter');return {};
+  }});
+  assert.equal(module.SourceExtensionAttach(owner),false);assert.equal(nested,false);
+  assertReleased(module,owner);fail=false;
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});
+
+test('metadata publication refusal restores pre-existing status and schema',()=>{
+  const {module,owner}=fixture(),original=owner.SetSliders;
+  owner.sourceExtensionStatus='before';
+  Object.defineProperty(owner,'sourceExtensionSchema',{value:17,writable:false,configurable:true});
+  assert.equal(module.SourceExtensionAttach(owner),false);assertReleased(module,owner);
+  assert.equal(owner.SetSliders,original);assert.equal(owner.sourceExtensionStatus,'before');
+  assert.equal(owner.sourceExtensionSchema,17);
+  Object.defineProperty(owner,'sourceExtensionSchema',{writable:true});
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});
+
+test('later setter invalidating an earlier publication cannot report attachment success',()=>{
+  const {module,owner}=fixture();let schema;
+  Object.defineProperty(owner,'sourceExtensionSchema',{configurable:true,get(){return schema;},
+    set(value){schema=value;if(value===1)owner.sourceExtensionLease=undefined;}});
+  assert.equal(module.SourceExtensionAttach(owner),false);assertReleased(module,owner);
+  Object.defineProperty(owner,'sourceExtensionSchema',{value:undefined,writable:true,configurable:true});
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});
+
+test('throwing restoration retires every state, reports incomplete detach and permits repaired restart',()=>{
+  const {module,owner,calls}=fixture();const original=owner.SetSliders,category=owner.SetCategoriesList;
+  let value=original,fail=false;
+  Object.defineProperty(owner,'SetSliders',{configurable:true,get(){return value;},
+    set(next){if(fail)throw Error('restore');value=next;}});
+  module.SourceExtensionAttach(owner);
+  const lease=module.sourceExtensionLease,state=lease.states.SetSliders;
+  fail=true;module.SourceExtensionDetach();assertReleased(module,owner);
+  assert.equal(module.sourceExtensionStatus,'detach-incomplete');
+  assert.equal(owner.SetCategoriesList,category);
+  assert.equal(state.active,false);
+  for(const field of ['module','owner','lease'])assert.equal(state[field],undefined);
+  for(const field of ['module','owner','states','wrappers','metadata'])assert.equal(lease[field],undefined);
+  assert.equal(owner.SetSliders(21),7);assert.deepEqual(calls,[[owner,21]]);
+  fail=false;owner.SetSliders=original;
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});
+
+test('non-deletable inherited override preserves inactive delegation and releases remaining methods',()=>{
+  const {module,calls}=fixture(),prototype=fixture().owner;
+  const owner=Object.create(prototype);owner.modeSelect={};
+  module.SourceExtensionAttach(owner);const wrapper=owner.SetSliders;
+  Object.defineProperty(owner,'SetSliders',{value:wrapper,writable:true,configurable:false});
+  module.SourceExtensionDetach();assertReleased(module,owner);
+  assert.equal(module.sourceExtensionStatus,'detach-incomplete');
+  assert.equal(Object.hasOwn(owner,'SetCategoriesList'),false);
+  assert.equal(owner.SetSliders(),7);
+  // Repair a writable but non-deletable slot, then own-slot restoration works.
+  owner.SetSliders=prototype.SetSliders;
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+  assert.equal(owner.SetSliders,prototype.SetSliders);assert.equal(calls.length,0);
+});
+
+test('undeletable owner lease fails closed without retaining the graph or stuck child guards',()=>{
+  const {module,owner}=fixture();module.SourceExtensionAttach(owner);
+  const lease=module.sourceExtensionLease;
+  Object.defineProperty(owner,'sourceExtensionLease',{value:lease,writable:true,configurable:false});
+  module.SourceExtensionDetach();assert.equal(module.sourceExtensionStatus,'detach-incomplete');
+  assert.equal(module.sourceExtensionLease,undefined);assert.equal(module.sourceExtensionDetaching,undefined);
+  assert.equal(lease.active,false);
+  for(const field of ['module','owner','states','wrappers','metadata'])assert.equal(lease[field],undefined);
+  assert.equal(module.SourceExtensionAttach(owner),false);
+  owner.sourceExtensionLease=undefined;
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});
+
+test('throwing lease getter at callback and detach cannot suppress originals or leave child stuck',()=>{
+  const {module,owner,calls}=fixture();module.SourceExtensionAttach(owner);
+  const lease=module.sourceExtensionLease;
+  Object.defineProperty(owner,'sourceExtensionLease',{configurable:true,get(){throw Error('lease getter');}});
+  assert.equal(owner.SetSliders(22),7);assert.deepEqual(calls,[[owner,22]]);
+  module.SourceExtensionDetach();assert.equal(module.sourceExtensionStatus,'detach-incomplete');
+  assert.equal(module.sourceExtensionLease,undefined);assert.equal(module.sourceExtensionDetaching,undefined);
+  assert.equal(lease.owner,undefined);delete owner.sourceExtensionLease;
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});
+
+test('partial setter mutation and failed rollback retire orphan wrappers and report incompleteness',()=>{
+  const {module,owner}=fixture(),category=owner.SetCategoriesList;
+  let value=category,fail=true,retained;
+  Object.defineProperty(owner,'SetCategoriesList',{configurable:true,get(){return value;},set(next){
+    if(fail){value=next;retained=module.sourceExtensionLease;throw Error('partial mutation');}
+    value=next;
+  }});
+  assert.equal(module.SourceExtensionAttach(owner),false);assertReleased(module,owner);
+  assert.equal(module.sourceExtensionStatus,'attachment-rollback-incomplete');
+  assert.equal(retained.active,false);
+  for(const field of ['module','owner','states','wrappers','metadata'])assert.equal(retained[field],undefined);
+  fail=false;owner.SetCategoriesList=category;
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});
+
+test('refused detach status reporting still releases the child guard and lease',()=>{
+  const {module,owner}=fixture();module.SourceExtensionAttach(owner);
+  Object.defineProperty(owner,'sourceExtensionStatus',{value:'attached',writable:false,configurable:true});
+  module.SourceExtensionDetach();assertReleased(module,owner);
+  assert.equal(module.sourceExtensionStatus,'detach-incomplete');
+  Object.defineProperty(owner,'sourceExtensionStatus',{writable:true});
+  assert.equal(module.SourceExtensionAttach(owner),true);module.SourceExtensionDetach();
+});

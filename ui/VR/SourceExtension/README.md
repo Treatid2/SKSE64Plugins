@@ -38,6 +38,17 @@ removing its instance override, and reduces retained wrappers to inactive
 original-function delegation without child/owner/lease references. These are
 source/mock-tested guarantees, not a measured live-GFx retention claim.
 
+Attachment sets a child-owned guard before owner getters, prepares all state
+before writes, verifies each publication and rechecks the completed transaction.
+Failed setup rolls back only still-owned publications. Detach contains each
+restoration failure, retires every retained wrapper state and clears child
+ownership/guards. Child status reports `attachment-rollback-incomplete` or
+`detach-incomplete` if hostile property flags/accessors prevent restoration;
+it does not pretend the owner was restored. Such wrappers become inactive
+original delegates. An undeletable stale owner lease fails closed until repaired;
+the extension never steals another module's lease. Notification eligibility
+getter failures also cannot suppress original callbacks.
+
 This is a foundation for gradual feature migration, not a replacement for the
 current runtime patch. No automatic loader is enabled and no SWF is distributed
 yet. It does not expose diagnostics or change controls/layout. Diagnostic review
