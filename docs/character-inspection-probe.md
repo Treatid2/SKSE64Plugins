@@ -19,6 +19,32 @@ Equivalent CharGen bridge names are `CaptureCharacterInspection` and
 sliders, Papyrus/API-provider controls, or a new polling/console input mechanism.
 No automatic timer, collector, file writer or runtime transport is added.
 
+### Readout through the existing SKSE Papyrus UI bridge
+
+SKSE's `UI.Invoke*` functions discard the Scaleform return value. For transports
+that expose Papyrus but not a direct GFx invoke-return operation, use:
+
+1. `UI.Invoke("RaceSex Menu", "_root.CaptureVRCharacterInspection")`.
+2. After the queued main-thread task has run,
+   `UI.Invoke("RaceSex Menu", "_root.PublishVRCharacterInspection")`.
+3. `UI.GetString("RaceSex Menu", "_root.VRCharacterInspectionJSON")`.
+
+Publish serializes the same movie/session-validated native copy into a bounded
+(64 KiB maximum) movie-local JSON string. It does not capture again or read live
+nodes. Its equivalent CharGen name is `PublishCharacterInspection`. A new movie
+initializes the string to `not-published`; serialization failure produces
+`readout-failed`, not an old successful payload. Node names are JSON-escaped,
+non-ASCII is escaped, and invalid UTF-8 is replaced.
+
+The string is a **transport copy**, not a continuously maintained live property.
+Invoke Publish immediately before every read, verify RaceSex Menu is still open,
+and check state/session/serial. Never read an old variable alone to infer that a
+closed menu or replaced actor is still live. An explicit fresh Publish reports
+expiry/wrong-movie through the same guard as the object getter. `UI.Invoke`
+returning none is not confirmation that capture or publication succeeded:
+the returned JSON state is the evidence, and `queued` may require another
+bounded publish/read after a frame, not another capture request.
+
 The getter reads a copied snapshot only. Capture runs through SKSE's main-thread
 task interface, bound to the exact originating movie and menu generation. Menu
 close expires retained data and cancels stale work. Old movie instances cannot

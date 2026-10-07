@@ -6,6 +6,7 @@
 #include <array>
 #include <mutex>
 #include <sstream>
+#include <nlohmann/json.hpp>
 
 namespace SKEE::FaceView
 {
@@ -169,7 +170,7 @@ namespace SKEE::FaceView
                 matrix.PushBack(RE::GFxValue{static_cast<double>(transform.rotate.entry[i][j])});
             value.SetMember("rotationRowMajor", matrix); target.SetMember(key, value);
         }
-        void ReadInspection(RE::GFxMovie* movie, RE::GFxValue* result)
+        Inspection CopyInspection(RE::GFxMovie* movie)
         {
             Inspection snapshot;
             {
@@ -178,6 +179,11 @@ namespace SKEE::FaceView
             }
             if (snapshot.movieIdentity && snapshot.movieIdentity != movie) snapshot.state = "wrong-movie";
             if (snapshot.serial && snapshot.session != generation.load()) snapshot.state = "expired";
+            return snapshot;
+        }
+        void ReadInspection(RE::GFxMovie* movie, RE::GFxValue* result)
+        {
+            const auto snapshot = CopyInspection(movie);
             movie->CreateObject(result);
             result->SetMember("schemaVersion", RE::GFxValue{1.0});
             result->SetMember("state", RE::GFxValue{snapshot.state});
@@ -217,6 +223,70 @@ namespace SKEE::FaceView
                 nodes.PushBack(value);
             }
             result->SetMember("nodes", nodes);
+        }
+        nlohmann::json InspectionPoint(const RE::NiPoint3& point)
+        { return nlohmann::json::array({point.x, point.y, point.z}); }
+        nlohmann::json InspectionTransform(const RE::NiTransform& transform)
+        {
+            auto matrix = nlohmann::json::array();
+            for (unsigned i = 0; i < 3; ++i) for (unsigned j = 0; j < 3; ++j)
+                matrix.push_back(transform.rotate.entry[i][j]);
+            return {{"position", InspectionPoint(transform.translate)}, {"scale", transform.scale},
+                {"rotationRowMajor", std::move(matrix)}};
+        }
+        std::string InspectionJSON(const Inspection& snapshot)
+        {
+            nlohmann::json result{{"schemaVersion", 1}, {"state", snapshot.state},
+                {"serial", std::to_string(snapshot.serial)}, {"session", std::to_string(snapshot.session)},
+                {"queued", inspectionQueued.load()}};
+            if (std::string_view(snapshot.state) == "captured") {
+                result["raceFormID"] = snapshot.raceID; result["cellFormID"] = snapshot.cellID;
+                result["menuView"] = snapshot.menuView; result["viewYawDegrees"] = snapshot.viewYaw;
+                result["actorAngleValid"] = snapshot.actorAngleValid;
+                result["actorPositionValid"] = snapshot.actorPositionValid;
+                if (snapshot.actorAngleValid) result["actorAngleRadians"] = InspectionPoint(snapshot.actorAngle);
+                if (snapshot.actorPositionValid) result["actorPosition"] = InspectionPoint(snapshot.actorPosition);
+                auto nodes = nlohmann::json::array();
+                for (std::size_t i = 0; i < snapshot.nodes.size(); ++i) {
+                    const auto& node = snapshot.nodes[i];
+                    nlohmann::json value{{"role", inspectionRoles[i]}, {"present", node.present}};
+                    if (node.present) {
+                        value["identity"] = node.identity; value["parentIdentity"] = node.parentIdentity;
+                        value["name"] = node.name;
+                        value["localValid"] = node.localValid; value["worldValid"] = node.worldValid;
+                        if (node.localValid) value["local"] = InspectionTransform(node.local);
+                        if (node.worldValid) value["world"] = InspectionTransform(node.world);
+                        value["ancestryComplete"] = node.ancestryComplete;
+                        value["sharesTrackingOrigin"] = node.sharesOrigin;
+                        auto ancestors = nlohmann::json::array();
+                        for (unsigned j = 0; j < node.ancestorCount; ++j) ancestors.push_back(node.ancestors[j]);
+                        value["ancestorsSelfFirst"] = std::move(ancestors);
+                    }
+                    nodes.push_back(std::move(value));
+                }
+                result["nodes"] = std::move(nodes);
+            }
+            // Skeleton names may contain non-UTF-8 bytes. Escape non-ASCII and
+            // replace invalid encoding rather than losing the whole observation.
+            return result.dump(-1, ' ', true, nlohmann::json::error_handler_t::replace);
+        }
+        bool PublishInspection(RE::GFxMovie* movie)
+        {
+            if (!movie) return false;
+            constexpr const char* failed = "{\"schemaVersion\":1,\"state\":\"readout-failed\",\"queued\":false}";
+            try {
+                const auto text = InspectionJSON(CopyInspection(movie));
+                if (text.size() > 64 * 1024) {
+                    movie->SetVariable("_root.VRCharacterInspectionJSON", RE::GFxValue{failed});
+                    return false;
+                }
+                // UI.Invoke discards GFx returns. This explicit movie-local
+                // string is readable using SKSE UI.GetString; no scene access.
+                return movie->SetVariable("_root.VRCharacterInspectionJSON", RE::GFxValue{text.c_str()});
+            } catch (...) {
+                movie->SetVariable("_root.VRCharacterInspectionJSON", RE::GFxValue{failed});
+                return false;
+            }
         }
         bool OwnYaw()
         { return yawRoom && yawRoom->parent==yawParent.get() && CameraPolicy::Same(yawRoom->local,yawLast) &&
@@ -439,6 +509,11 @@ namespace SKEE::FaceView
                     if (args.argCount == 0 && args.retVal) ReadInspection(args.movie, args.retVal);
                     return;
                 }
+                if (operation == 7) {
+                    const bool published = args.argCount == 0 && PublishInspection(args.movie);
+                    if (args.retVal) args.retVal->SetBoolean(published);
+                    return;
+                }
                 if (operation == 3 && args.retVal) {
                     args.movie->CreateObject(args.retVal);
                     args.retVal->SetMember("anchorRefreshes",RE::GFxValue{static_cast<double>(anchorRefreshes.load())});
@@ -573,13 +648,17 @@ namespace SKEE::FaceView
         movie->CreateFunction(&testYaw,handler.get(),reinterpret_cast<void*>(4));
         root->SetMember("SetViewYaw",testYaw);
         movie->SetVariable("_root.TestVRViewYaw",testYaw);
-        constexpr const char* inspectionNames[]{"CaptureCharacterInspection", "GetCharacterInspection"};
-        constexpr const char* inspectionAliases[]{"_root.CaptureVRCharacterInspection", "_root.GetVRCharacterInspection"};
+        constexpr const char* inspectionNames[]{"CaptureCharacterInspection", "GetCharacterInspection", "PublishCharacterInspection"};
+        constexpr const char* inspectionAliases[]{"_root.CaptureVRCharacterInspection", "_root.GetVRCharacterInspection", "_root.PublishVRCharacterInspection"};
         for (std::uintptr_t i = 0; i < std::size(inspectionNames); ++i) {
             RE::GFxValue function;
             movie->CreateFunction(&function, handler.get(), reinterpret_cast<void*>(5 + i));
             root->SetMember(inspectionNames[i], function);
             movie->SetVariable(inspectionAliases[i], function);
         }
+        // New movie instances must not inherit a transport copy from another
+        // menu session. A read requires an explicit publish in this movie.
+        movie->SetVariable("_root.VRCharacterInspectionJSON", RE::GFxValue{
+            "{\"schemaVersion\":1,\"state\":\"not-published\",\"queued\":false}"});
     }
 }

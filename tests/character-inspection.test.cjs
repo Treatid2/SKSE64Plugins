@@ -41,10 +41,12 @@ test('node traversal and payload are bounded, absent and truncated evidence expl
 });
 test('getter serializes copied data, guards wrong movie/expiry and omits invalid transforms', () => {
   const getter = body('ReadInspection');
-  assert.match(getter, /lock\(inspectionMutex\)/);
-  assert.match(getter, /snapshot = inspection/);
-  assert.match(getter, /snapshot.movieIdentity != movie/);
-  assert.match(getter, /snapshot.session != generation.load\(\)/);
+  const copy = body('CopyInspection');
+  assert.match(copy, /lock\(inspectionMutex\)/);
+  assert.match(copy, /snapshot = inspection/);
+  assert.match(copy, /snapshot.movieIdentity != movie/);
+  assert.match(copy, /snapshot.session != generation.load\(\)/);
+  assert.match(getter, /CopyInspection\(movie\)/);
   assert.match(getter, /snapshot.state\) != "captured"\) return/);
   assert.match(getter, /if \(node.localValid\) WriteTransform/);
   assert.match(getter, /if \(node.worldValid\) WriteTransform/);
@@ -59,4 +61,31 @@ test('pointer identities and counters are strings, and both aliases are register
   const register = body('Register');
   assert.match(register, /_root.CaptureVRCharacterInspection/);
   assert.match(register, /_root.GetVRCharacterInspection/);
+});
+test('Papyrus readout explicitly publishes a bounded movie-local string without retaining live nodes', () => {
+  const publish = body('PublishInspection');
+  assert.match(publish, /InspectionJSON\(CopyInspection\(movie\)\)/);
+  assert.match(publish, /text.size\(\) > 64 \* 1024/);
+  assert.match(publish, /SetVariable\("_root.VRCharacterInspectionJSON"/);
+  assert.match(publish, /catch \(\.\.\.\)/);
+  assert.match(publish, /readout-failed/);
+  assert.doesNotMatch(publish, /GetSingleton|Get3D|GetVRNodeData|GetAngle\(|GetObjectByName|AddTask|ofstream/);
+  const register = body('Register');
+  assert.match(register, /_root.PublishVRCharacterInspection/);
+  assert.match(register, /not-published/);
+  assert.match(source, /operation == 7[\s\S]*?args.argCount == 0 && PublishInspection\(args.movie\)/);
+});
+test('JSON readout retains object-schema validity gates, string identities and bounded arrays', () => {
+  const json = body('InspectionJSON');
+  assert.match(json, /snapshot.state\) == "captured"/);
+  assert.match(json, /std::to_string\(snapshot.serial\)/);
+  assert.match(json, /std::to_string\(snapshot.session\)/);
+  assert.match(json, /i < snapshot.nodes.size\(\)/);
+  assert.match(json, /j < node.ancestorCount/);
+  assert.match(json, /if \(snapshot.actorAngleValid\)/);
+  assert.match(json, /if \(snapshot.actorPositionValid\)/);
+  assert.match(json, /if \(node.localValid\)/);
+  assert.match(json, /if \(node.worldValid\)/);
+  assert.match(json, /error_handler_t::replace/);
+  assert.doesNotMatch(json, /GetSingleton|Get3D|GetVRNodeData|GetAngle\(|GetObjectByName/);
 });
