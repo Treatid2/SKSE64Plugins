@@ -1,6 +1,7 @@
 #include "CharacterCreationInterface.h"
 #include "CharacterNameUpdate.h"
 #include "RaceSexMenuFaceView.h"
+#include "CharacterInspectionControls.h"
 #include "AvatarLighting.h"
 #include "MenuConfiguration.h"
 #include "VRMenuOptionsPolicy.h"
@@ -66,6 +67,7 @@ namespace
 void CharacterCreationInterface::Revert()
 {
 	nameStartIntent_.Revert();
+	SKEE::CharacterInspection::Restore();
 	SKEE::FaceView::Restore();
 	SKEE::AvatarLighting::Reset();
 	sessionGeneration_.fetch_add(1);
@@ -224,6 +226,7 @@ RE::BSEventNotifyControl CharacterCreationInterface::ProcessEvent(
 	} else {
 		// Never transfer an abandoned first-creation request to a later reopen.
 		nameStartIntent_.Consume();
+		SKEE::CharacterInspection::Restore();
 		SKEE::FaceView::Restore();
 		SKEE::AvatarLighting::Reset();
 		state_.store(kInactive);

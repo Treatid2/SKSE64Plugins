@@ -59,6 +59,7 @@
 #include "MenuConfiguration.h"
 #include "MenuExtensions.h"
 #include "RaceSexMenuFaceView.h"
+#include "CharacterInspectionControls.h"
 #include "AvatarLighting.h"
 #include "SkeletonExtender.h"
 #include "AttachmentInterface.h"
@@ -875,6 +876,7 @@ void SKSEMessageHandler(SKSE::MessagingInterface::Message * message)
 		}
 		case SKSE::MessagingInterface::kDataLoaded:
 		{
+			SKEE::CharacterInspection::Install();
 			if (auto* ui = RE::UI::GetSingleton()) {
 				ui->AddEventSink(&g_characterCreationInterface);
 				g_characterCreationInterface.ObserveCurrentState();

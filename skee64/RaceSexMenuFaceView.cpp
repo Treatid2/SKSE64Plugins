@@ -1,11 +1,15 @@
 #include "pch.h"
 #include "RaceSexMenuFaceView.h"
 #include "RaceSexCameraPolicy.h"
+#include "CharacterInspectionControls.h"
+#include "MenuExtensions.h"
 #include <atomic>
 #include <cmath>
 #include <array>
 #include <mutex>
 #include <sstream>
+#include <unordered_set>
+#include <vector>
 #include <nlohmann/json.hpp>
 
 namespace SKEE::FaceView
@@ -25,6 +29,8 @@ namespace SKEE::FaceView
         RE::NiAVObject* headIdentity{}; // identity only, never dereferenced
         RE::TESRace* raceIdentity{};
         float avatarScale{};
+        std::atomic<std::uint64_t> avatarRevision{0};
+        std::uint64_t anchorRevision{};
         std::atomic<unsigned> anchorRefreshes{0}, originReplacements{0}, updates{0};
         std::atomic<unsigned> cameraReads{0}, cameraMoves{0}, cameraRejected{0}, cameraCancelled{0};
         RE::NiPointer<RE::NiNode> yawRoom, yawParent;
@@ -33,7 +39,7 @@ namespace SKEE::FaceView
         RE::NiPoint3 yawCompensation{};
         std::atomic<unsigned> yawState{0}; // 0 neutral, 1 applied, 2 rejected, 3 cancelled
         std::atomic<float> yawDegrees{0};
-        std::atomic<bool> yawQueued{false};
+        std::atomic<unsigned> yawPending{0};
         // Inspection is an explicit, bounded main-thread capture. GFx readers
         // only serialize copied values: never dereference live scene nodes.
         struct InspectionNode
@@ -414,10 +420,11 @@ namespace SKEE::FaceView
             // Do not chase idle head animation at the 500 ms polling cadence.
             // Refresh the framing anchor only for structural avatar changes.
             if (entering || headIdentity != head || raceIdentity != player->GetRace() ||
-                std::abs(avatarScale-root->world.scale) > 0.0001F) {
+                std::abs(avatarScale-root->world.scale) > 0.0001F || anchorRevision != avatarRevision.load()) {
                 anchorHead = head->world.translate;
                 anchorHead.z += eyeHeight;
                 headIdentity = head; raceIdentity = player->GetRace(); avatarScale = root->world.scale;
+                anchorRevision = avatarRevision.load();
                 anchorRefreshes.fetch_add(1);
             }
             // Fixed normal-view anchor, NOT the current tracked HMD position:
@@ -453,7 +460,11 @@ namespace SKEE::FaceView
                 !CameraPolicy::Valid(nodes.origin->local)) return false;
             if (room && (room.get()!=nodes.origin.get() || nodes.origin->local.translate.GetSquaredDistance(lastLocal)>=0.0001F)) return false;
             if (yawRoom && (!OwnYaw() || yawRoom.get()!=nodes.origin.get() || yawHmd.get()!=nodes.hmd.get() ||
-                yawAvatar.get()!=nodes.avatar.get() || yawMenu.get()!=menu || yawQuad.get()!=quad)) return false;
+                yawMenu.get()!=menu || yawQuad.get()!=quad)) return false;
+            // Race/sex can replace the independent avatar root without changing
+            // ownership of the tracked origin. ResolveCamera already rechecks
+            // that the replacement avatar is not descended from that origin.
+            if (yawRoom) yawAvatar = nodes.avatar;
             if (requested==0) {
                 if (yawRoom) return RemoveYaw();
                 yawState.store(0); return true;
@@ -482,17 +493,22 @@ namespace SKEE::FaceView
         {
             if (!Supported() || !std::isfinite(requested) || std::abs(requested)>60) return false;
             auto* tasks=SKSE::GetTaskInterface();
-            if (!tasks || yawQueued.exchange(true)) return false;
+            // Preserve every absolute input (especially the final zero), rather
+            // than dropping the latest slider position behind a queued task.
+            if (!tasks) return false;
+            yawPending.fetch_add(1);
             const auto session=generation.load();
             try {
                 tasks->AddTask([requested,identity,session] {
                     auto* ui=RE::UI::GetSingleton();
                     auto menu=ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
-                    if (generation.load()!=session || !menu || menu->uiMovie.get()!=identity) yawState.store(3);
+                    if (generation.load()!=session || !menu || menu->uiMovie.get()!=identity ||
+                        !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) yawState.store(3);
                     else if (!ApplyYaw(requested)) yawState.store(2);
-                    yawQueued.store(false);
+                    MenuExtensions::GetInterface()->SetValue("RaceMenuVR2", "viewYaw", yawDegrees.load());
+                    yawPending.fetch_sub(1);
                 });
-            } catch (...) { yawQueued.store(false); return false; }
+            } catch (...) { yawPending.fetch_sub(1); return false; }
             return true;
         }
         class Handler final : public RE::GFxFunctionHandler
@@ -525,7 +541,7 @@ namespace SKEE::FaceView
                     args.retVal->SetMember("cameraCancelled",RE::GFxValue{static_cast<double>(cameraCancelled.load())});
                     args.retVal->SetMember("yawState",RE::GFxValue{static_cast<double>(yawState.load())});
                     args.retVal->SetMember("yawDegrees",RE::GFxValue{static_cast<double>(yawDegrees.load())});
-                    args.retVal->SetMember("yawQueued",RE::GFxValue{yawQueued.load()});
+                    args.retVal->SetMember("yawQueued",RE::GFxValue{yawPending.load() != 0});
 #if defined(ENABLE_SKYRIM_VR)
                     // Read-only topology evidence for a future bounded view-yaw
                     // control. Never assume RoomNode excludes the menu/quad.
@@ -567,6 +583,9 @@ namespace SKEE::FaceView
       eyeHeight = std::isfinite(requestedHeight) && requestedHeight >= -20 && requestedHeight <= 30 ? requestedHeight : 5; }
     bool Supported() { return enabled && REL::Module::IsVR(); }
     unsigned Current() { return view.load(); } // 0 normal, 1 face, 2 unavailable
+    float ViewYaw() { return yawDegrees.load(); }
+    bool RequestViewYaw(float degrees, RE::GFxMovie* movie) { return RequestYaw(degrees, movie); }
+    void RefreshAvatarAnchor() { avatarRevision.fetch_add(1); }
     bool GetCameraTransform(RE::NiPoint3& position, RE::NiMatrix3& rotation)
     {
         CameraNodes nodes;
@@ -660,5 +679,249 @@ namespace SKEE::FaceView
         // menu session. A read requires an explicit publish in this movie.
         movie->SetVariable("_root.VRCharacterInspectionJSON", RE::GFxValue{
             "{\"schemaVersion\":1,\"state\":\"not-published\",\"queued\":false}"});
+    }
+}
+
+// Preview-only controls. Scene mutation is owned by the native menu update,
+// never by a rendering callback, saved actor angles, or an animation controller.
+namespace SKEE::CharacterInspection
+{
+    namespace
+    {
+        constexpr const char* provider = "RaceMenuVR2";
+        constexpr std::size_t maxNodes = 4096, maxDepth = 64;
+        using Process = RE::UI_MESSAGE_RESULTS (*)(RE::RaceSexMenu*, RE::UIMessage&);
+        using SceneFunction = void (*)(RE::NiAVObject*);
+        Process original{};
+        bool installed{}, rejected{};
+        RE::GFxMovie* movieIdentity{}; // identity only, accessed on menu/game tasks
+        float requestedYaw{}, appliedYaw{};
+        RE::NiPointer<RE::NiAVObject> avatar;
+        RE::NiPointer<RE::NiNode> parent;
+        RE::NiMatrix3 nativeRotation{}, previewRotation{};
+        struct Node { RE::NiPointer<RE::NiAVObject> object; std::size_t depth; };
+
+        bool SameRotation(const RE::NiMatrix3& a, const RE::NiMatrix3& b)
+        {
+            for (unsigned i = 0; i < 3; ++i) for (unsigned j = 0; j < 3; ++j)
+                if (!std::isfinite(a.entry[i][j]) || !std::isfinite(b.entry[i][j]) ||
+                    std::abs(a.entry[i][j] - b.entry[i][j]) > 0.0001F) return false;
+            return true;
+        }
+        bool Frame(const RE::NiTransform& value)
+        {
+            if (!CameraPolicy::Valid(value)) return false;
+            const auto& m = value.rotate.entry;
+            const float determinant = m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1]) -
+                m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0]) + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+            return std::abs(determinant - 1.F) <= 0.001F;
+        }
+        bool InRdata(std::uintptr_t address, std::size_t bytes)
+        {
+            const auto data = REL::Module::get().segment(REL::Segment::Name::rdata);
+            return address >= data.address() && address <= data.address()+data.size() &&
+                bytes <= data.address()+data.size()-address;
+        }
+        bool Collect(RE::NiAVObject* root, std::vector<Node>& nodes, std::vector<RE::NiPointer<RE::NiNode>>& ancestors)
+        {
+            if (!root) return false;
+            const auto base = REL::Module::get().base();
+            std::unordered_set<RE::NiAVObject*> seen;
+            for (auto* p = root->parent; p; p = p->parent) {
+                const auto table = *reinterpret_cast<const std::uintptr_t*>(p);
+                if (ancestors.size() >= maxDepth || p == root || !seen.insert(p).second ||
+                    !InRdata(table, 0x31*sizeof(std::uintptr_t)) ||
+                    reinterpret_cast<const std::uintptr_t*>(table)[0x30] != base+0xC9DC10 ||
+                    p->GetFlags().any(RE::NiAVObject::Flag::kFixedBound)) return false;
+                ancestors.emplace_back(p);
+            }
+            nodes.push_back({RE::NiPointer<RE::NiAVObject>{root}, 0}); seen.insert(root);
+            for (std::size_t i = 0; i < nodes.size(); ++i) {
+                auto* object = nodes[i].object.get(); const auto depth = nodes[i].depth;
+                const auto table = *reinterpret_cast<const std::uintptr_t*>(object);
+                if (!InRdata(table, 0x31*sizeof(std::uintptr_t)) || !Frame(object->local) || !Frame(object->world)) return false;
+                const auto* functions = reinterpret_cast<const std::uintptr_t*>(table);
+                // VR-only extra virtual at 0x26 is the pure transform pass.
+                // Bounds functions are the independently inspected node/geometry
+                // implementations, not UpdateWorldData's collision/controller path.
+                if ((functions[0x26] != base+0xC9BCE0 && functions[0x26] != base+0xC9DEA0) ||
+                    (functions[0x30] != base+0xC9DC10 && functions[0x30] != base+0xCB78C0 && functions[0x30] != base+0xC9C700) ||
+                    object->GetFlags().any(RE::NiAVObject::Flag::kFixedBound)) return false;
+                if (auto* node = object->AsNode()) {
+                    auto& children = node->GetChildren();
+                    if (children.capacity() > maxNodes || children.free_idx() > children.capacity() ||
+                        children.size() > children.free_idx()) return false;
+                    for (std::size_t j = 0; j < children.free_idx(); ++j) {
+                        auto* child = children[static_cast<std::uint16_t>(j)].get();
+                        if (!child) continue;
+                        if (child->parent != node || depth+1 > maxDepth || nodes.size() >= maxNodes || !seen.insert(child).second) return false;
+                        nodes.push_back({RE::NiPointer<RE::NiAVObject>{child}, depth+1});
+                    }
+                }
+            }
+            return true;
+        }
+        void Propagate(const std::vector<Node>& nodes, const std::vector<RE::NiPointer<RE::NiNode>>& ancestors)
+        {
+            // All virtual targets/topology were checked before writing. Use the
+            // non-recursive pure composer in parent-first order: bounded depth
+            // does not become an unbounded native recursion or animation tick.
+            const auto base = REL::Module::get().base();
+            const auto compose = reinterpret_cast<SceneFunction>(base+0xC9BCE0);
+            for (const auto& node : nodes) compose(node.object.get());
+            for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
+                auto* object = it->object.get();
+                const auto bound = (*reinterpret_cast<std::uintptr_t**>(object))[0x30];
+                if (bound != base+0xC9C700) reinterpret_cast<SceneFunction>(bound)(object);
+            }
+            // Refit containing scene bounds too; otherwise a turned tail or
+            // hairstyle can lie outside a parent's stale culling volume.
+            const auto refit = reinterpret_cast<SceneFunction>(base+0xC9DC10);
+            for (const auto& node : ancestors) refit(node.get());
+        }
+        RE::NiAVObject* LiveAvatar()
+        {
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            return player ? player->Get3D(false) : nullptr;
+        }
+        bool RemovePreview(bool propagate = true)
+        {
+            if (!avatar) return true;
+            // Never replay a detached race/sex root onto its replacement.
+            if (avatar.get() != LiveAvatar()) { avatar.reset(); parent.reset(); appliedYaw = 0; return true; }
+            if (avatar->parent != parent.get() || !SameRotation(avatar->local.rotate, previewRotation)) return false;
+            std::vector<Node> nodes;
+            std::vector<RE::NiPointer<RE::NiNode>> ancestors;
+            if (propagate && !Collect(avatar.get(), nodes, ancestors)) return false;
+            avatar->local.rotate = nativeRotation; // keep current translation/scale
+            if (propagate) Propagate(nodes, ancestors);
+            avatar.reset(); parent.reset(); appliedYaw = 0;
+            return true;
+        }
+        void Reject(const char* reason)
+        {
+            requestedYaw = 0;
+            if (!rejected) SKSE::log::warn("RaceMenu avatar preview rotation unavailable: {}", reason);
+            rejected = true;
+            MenuExtensions::GetInterface()->SetValue(provider, "avatarYaw", appliedYaw);
+        }
+        bool ApplyPreview()
+        {
+            auto* root = LiveAvatar();
+            if (!root || !root->parent || !Frame(root->local) || !Frame(root->parent->world)) return false;
+            std::vector<Node> nodes;
+            std::vector<RE::NiPointer<RE::NiNode>> ancestors;
+            if (!Collect(root, nodes, ancestors)) return false;
+            // World-Z turn around the root position, converted back through the
+            // parent frame. Actor reference rotation and position are untouched.
+            RE::NiTransform identity;
+            const auto yaw = CameraPolicy::YawAroundEye(identity, {}, requestedYaw).rotate;
+            const auto baseline = root->local.rotate;
+            const auto& p = root->parent->world.rotate;
+            auto next = root->local; next.rotate = p.Transpose()*yaw*p*baseline;
+            if (!Frame(next)) return false;
+            avatar.reset(root); parent.reset(root->parent);
+            nativeRotation = baseline; previewRotation = next.rotate;
+            root->local.rotate = previewRotation;
+            Propagate(nodes, ancestors);
+            appliedYaw = requestedYaw;
+            return true;
+        }
+        void AvatarSlider(double value, void*)
+        {
+            if (!installed || rejected || !movieIdentity || !std::isfinite(value) || std::abs(value) > 180) {
+                MenuExtensions::GetInterface()->SetValue(provider, "avatarYaw", appliedYaw); return;
+            }
+            requestedYaw = static_cast<float>(value);
+        }
+        void ViewSlider(double value, void*)
+        {
+            if (!FaceView::RequestViewYaw(static_cast<float>(value), movieIdentity))
+                MenuExtensions::GetInterface()->SetValue(provider, "viewYaw", FaceView::ViewYaw());
+        }
+        RE::UI_MESSAGE_RESULTS ProcessHook(RE::RaceSexMenu* menu, RE::UIMessage& message)
+        {
+            const bool update = message.type == RE::UI_MESSAGE_TYPE::kUpdate;
+            const bool close = message.type == RE::UI_MESSAGE_TYPE::kHide || message.type == RE::UI_MESSAGE_TYPE::kForceHide;
+            const float priorYaw = appliedYaw;
+            auto* priorRoot = avatar.get();
+            if (update || close) {
+                try {
+                    if (close) Restore();
+                    else if (!RemovePreview(false)) Reject("preview ownership/topology changed");
+                } catch (...) { Reject("pre-update validation failed"); }
+            }
+            // Exactly one native call, unchanged arguments, regardless of feature failure.
+            const auto result = original(menu, message);
+            if (update && menu && menu->uiMovie) {
+                auto* ui = RE::UI::GetSingleton();
+                if (ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) {
+                    try {
+                        Register(menu->uiMovie.get());
+                        if (!rejected && requestedYaw != 0 && !ApplyPreview()) Reject("unsupported avatar transform/bounds graph");
+                        if (priorYaw != appliedYaw || (priorRoot && priorRoot != LiveAvatar())) FaceView::RefreshAvatarAnchor();
+                        MenuExtensions::GetInterface()->SetValue(provider, "avatarYaw", appliedYaw);
+                        MenuExtensions::GetInterface()->SetValue(provider, "viewYaw", FaceView::ViewYaw());
+                    } catch (...) { Reject("post-update validation failed"); }
+                }
+            }
+            return result;
+        }
+        template <std::size_t N>
+        bool Code(std::uintptr_t rva, const std::array<std::uint8_t, N>& prefix)
+        {
+            const auto& module = REL::Module::get();
+            const auto text = module.segment(REL::Segment::Name::textx);
+            const auto address = module.base()+rva;
+            return address >= text.address() && address <= text.address()+text.size() &&
+                N <= text.address()+text.size()-address && !std::memcmp(reinterpret_cast<const void*>(address), prefix.data(), N);
+        }
+    }
+    bool Install()
+    {
+#if defined(ENABLE_SKYRIM_VR)
+        if (installed) return true;
+        if (!REL::Module::IsVR() || REL::Module::get().version() != REL::Version(1,4,15,0)) return false;
+        REL::Relocation<std::uintptr_t> table{RE::VTABLE_RaceSexMenu[0]};
+        if (!InRdata(table.address(), 5*sizeof(std::uintptr_t)) ||
+            reinterpret_cast<const std::uintptr_t*>(table.address())[4] != REL::Module::get().base()+0x8DD6E0 ||
+            !Code(0x8DD6E0, std::array<std::uint8_t, 16>{0x48,0x8B,0xC4,0x55,0x53,0x56,0x57,0x41,0x56,0x48,0x8D,0xA8,0xC8,0xFE,0xFF,0xFF}) ||
+            !Code(0xC9BCE0, std::array<std::uint8_t, 9>{0x40,0x53,0x48,0x83,0xEC,0x60,0x48,0x8B,0xD9}) ||
+            !Code(0xC9DEA0, std::array<std::uint8_t, 9>{0x40,0x56,0x48,0x83,0xEC,0x20,0x48,0x8B,0xF1}) ||
+            !Code(0xC9DC10, std::array<std::uint8_t, 11>{0x40,0x55,0x48,0x83,0xEC,0x20,0x8B,0x81,0x0C,0x01,0x00}) ||
+            !Code(0xCB78C0, std::array<std::uint8_t, 10>{0x48,0x8B,0xC4,0x48,0x89,0x58,0x08,0x57,0x48,0x81})) {
+            SKSE::log::warn("RaceMenu avatar preview hook unavailable: exact VR native contract mismatch; existing menu unchanged");
+            return false;
+        }
+        original = reinterpret_cast<Process>(table.write_vfunc(4, ProcessHook)); installed = true;
+        SKSE::log::info("Installed VR avatar preview rotation after native menu update (no saved actor angle changes)");
+        return true;
+#else
+        return false;
+#endif
+    }
+    void Register(RE::GFxMovie* movie)
+    {
+        if (!installed || !movie || movie == movieIdentity) return;
+        Restore(); movieIdentity = movie; rejected = false;
+        auto* service = MenuExtensions::GetInterface();
+        const bool section = service->RegisterSection({provider, "view", "View", 1u<<30, 1000});
+        if (!section || !service->RegisterSlider({provider,"view","avatarYaw","Avatar rotation",-180,180,1,0,AvatarSlider,nullptr}) ||
+            (FaceView::Supported() && !service->RegisterSlider({provider,"view","viewYaw","View direction",-60,60,1,FaceView::ViewYaw(),ViewSlider,nullptr}))) {
+            service->UnregisterProvider(provider); Reject("View category registration failed");
+        }
+    }
+    void Restore()
+    {
+        if (!installed) return;
+        try {
+            if (!RemovePreview()) Reject("cannot restore a competing preview pose");
+        } catch (...) { Reject("preview restoration validation failed"); }
+        avatar.reset(); parent.reset(); requestedYaw = appliedYaw = 0;
+        movieIdentity = nullptr;
+        // Fresh registration tokens cancel old queued inputs even if an engine
+        // allocator reuses a movie address on the next menu opening.
+        MenuExtensions::GetInterface()->UnregisterProvider(provider);
+        FaceView::RefreshAvatarAnchor();
     }
 }

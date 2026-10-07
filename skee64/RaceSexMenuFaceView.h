@@ -12,4 +12,7 @@ namespace SKEE::FaceView
     // Movement is queued on the game thread, never applied to the tracked HMD.
     bool GetCameraTransform(RE::NiPoint3& position, RE::NiMatrix3& rotation);
     bool RequestCameraPosition(const RE::NiPoint3& position);
+    float ViewYaw();
+    bool RequestViewYaw(float degrees, RE::GFxMovie* movie);
+    void RefreshAvatarAnchor();
 }

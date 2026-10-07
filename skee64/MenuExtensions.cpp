@@ -61,7 +61,8 @@ namespace SKEE::MenuExtensions
                     std::scoped_lock lock(mutex);
                     auto item = sliders.find(Key(provider,id));
                     if (item == sliders.end() || value < item->second.minimum || value > item->second.maximum) return false;
-                    item->second.value = value; ++revision; return true;
+                    if (item->second.value != value) { item->second.value = value; ++revision; }
+                    return true;
                 } catch (...) { return false; }
             }
             void UnregisterProvider(const char* provider) override
@@ -110,11 +111,16 @@ namespace SKEE::MenuExtensions
                         { std::scoped_lock lock(service.mutex); auto it = service.sliders.find(key);
                           if (it == service.sliders.end() || value < it->second.minimum || value > it->second.maximum) return;
                           token = it->second.token; }
-                        if (auto* tasks = SKSE::GetTaskInterface()) tasks->AddTask([key, token, value] {
+                        const auto* identity = args.movie; // comparison only; no delayed GFx dereference
+                        if (auto* tasks = SKSE::GetTaskInterface()) tasks->AddTask([key, token, value, identity] {
+                            auto* ui = RE::UI::GetSingleton();
+                            auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+                            if (!menu || menu->uiMovie.get() != identity || !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) return;
                             IMenuExtensions::SliderCallback callback{}; void* context{};
                             { std::scoped_lock lock(service.mutex); auto it = service.sliders.find(key);
                               if (it == service.sliders.end() || it->second.token != token) return;
-                              it->second.value = value; callback = it->second.callback; context = it->second.context; }
+                              if (it->second.value != value) { it->second.value = value; ++service.revision; }
+                              callback = it->second.callback; context = it->second.context; }
                             try { callback(value,context); } catch (...) { SKSE::log::warn("RaceMenu extension slider callback threw"); }
                         });
                     }
