@@ -3,6 +3,9 @@
 #include "RaceSexCameraPolicy.h"
 #include <atomic>
 #include <cmath>
+#include <array>
+#include <mutex>
+#include <sstream>
 
 namespace SKEE::FaceView
 {
@@ -30,6 +33,191 @@ namespace SKEE::FaceView
         std::atomic<unsigned> yawState{0}; // 0 neutral, 1 applied, 2 rejected, 3 cancelled
         std::atomic<float> yawDegrees{0};
         std::atomic<bool> yawQueued{false};
+        // Inspection is an explicit, bounded main-thread capture. GFx readers
+        // only serialize copied values: never dereference live scene nodes.
+        struct InspectionNode
+        {
+            bool present{}, localValid{}, worldValid{}, ancestryComplete{}, sharesOrigin{};
+            std::string identity, parentIdentity, name;
+            RE::NiTransform local{}, world{};
+            std::array<std::string, 16> ancestors{};
+            unsigned ancestorCount{};
+        };
+        struct Inspection
+        {
+            RE::GFxMovie* movieIdentity{}; // comparison only, never dereferenced
+            std::uint64_t session{}, serial{};
+            const char* state{"not-captured"};
+            std::uint32_t raceID{}, cellID{};
+            unsigned menuView{};
+            float viewYaw{};
+            bool actorAngleValid{}, actorPositionValid{};
+            RE::NiPoint3 actorAngle{}, actorPosition{};
+            std::array<InspectionNode, 10> nodes{};
+        };
+        constexpr const char* inspectionRoles[]{"avatar", "avatarParent", "head", "pelvis", "tail",
+            "trackingOrigin", "trackingParent", "headset", "menu", "menuQuad"};
+        static_assert(std::size(inspectionRoles) == 10);
+        std::mutex inspectionMutex;
+        Inspection inspection;
+        std::atomic<bool> inspectionQueued{false};
+        std::atomic<std::uint64_t> inspectionSerial{0};
+        std::string NodeIdentity(const RE::NiAVObject* node)
+        {
+            if (!node) return {};
+            std::ostringstream value;
+            value << "0x" << std::hex << reinterpret_cast<std::uintptr_t>(node);
+            return value.str(); // Never round a 64-bit pointer through a GFx double.
+        }
+        InspectionNode CaptureNode(RE::NiAVObject* node, const RE::NiNode* origin)
+        {
+            InspectionNode result;
+            if (!node) return result;
+            result.present = true;
+            result.identity = NodeIdentity(node);
+            result.parentIdentity = NodeIdentity(node->parent);
+            if (const auto* name = node->name.c_str()) result.name = std::string(name).substr(0, 128);
+            result.local = node->local; result.world = node->world;
+            result.localValid = CameraPolicy::Valid(result.local);
+            result.worldValid = CameraPolicy::Valid(result.world);
+            auto* ancestor = node;
+            while (ancestor && result.ancestorCount < result.ancestors.size()) {
+                result.ancestors[result.ancestorCount++] = NodeIdentity(ancestor);
+                if (origin && ancestor == origin) result.sharesOrigin = true;
+                ancestor = ancestor->parent;
+            }
+            // A truncated chain is unknown, not evidence of disjoint ownership.
+            result.ancestryComplete = !ancestor;
+            return result;
+        }
+        bool RequestInspection(RE::GFxMovie* identity)
+        {
+            auto* tasks = SKSE::GetTaskInterface();
+            if (!Supported() || !identity || !tasks || inspectionQueued.exchange(true)) return false;
+            const auto session = generation.load();
+            const auto serial = inspectionSerial.fetch_add(1) + 1;
+            {
+                std::lock_guard lock(inspectionMutex);
+                inspection = {}; inspection.movieIdentity = identity;
+                inspection.session = session; inspection.serial = serial;
+                inspection.state = "queued";
+            }
+            try {
+                tasks->AddTask([identity, session, serial] {
+                    Inspection next;
+                    next.movieIdentity = identity;
+                    next.session = session; next.serial = serial; next.state = "unavailable";
+                    try {
+                    auto* ui = RE::UI::GetSingleton();
+                    auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+                    if (generation.load() != session || !menu || menu->uiMovie.get() != identity ||
+                        !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) next.state = "cancelled";
+#if defined(ENABLE_SKYRIM_VR)
+                    else if (REL::Module::IsVR()) {
+                        auto* player = RE::PlayerCharacter::GetSingleton();
+                        auto* vr = player ? player->GetVRNodeData() : nullptr;
+                        auto* avatar = player ? player->Get3D(false) : nullptr;
+                        if (player && vr && avatar) {
+                            next.state = "captured";
+                            if (auto* race = player->GetRace()) next.raceID = race->GetFormID();
+                            if (auto* cell = player->GetParentCell()) next.cellID = cell->GetFormID();
+                            next.actorAngle = player->GetAngle(); next.actorPosition = player->GetPosition();
+                            next.actorAngleValid = CameraPolicy::Finite(next.actorAngle);
+                            next.actorPositionValid = CameraPolicy::Finite(next.actorPosition);
+                            next.menuView = view.load(); next.viewYaw = yawDegrees.load();
+                            auto* origin = vr->RoomNode.get();
+                            const std::array<RE::NiAVObject*, 10> nodes{avatar, avatar->parent,
+                                avatar->GetObjectByName(RE::BSFixedString("NPC Head [Head]")),
+                                avatar->GetObjectByName(RE::BSFixedString("NPC Pelvis [Pelv]")),
+                                avatar->GetObjectByName(RE::BSFixedString("NPC Tail [Tail]")),
+                                origin, origin ? origin->parent : nullptr, vr->HmdNode.get(),
+                                vr->uiNode.get(), vr->InWorldUIQuadGeo.get()};
+                            for (std::size_t i = 0; i < nodes.size(); ++i) next.nodes[i] = CaptureNode(nodes[i], origin);
+                        }
+                    }
+#endif
+                    } catch (...) { next.state = "capture-failed"; }
+                    {
+                        std::lock_guard lock(inspectionMutex);
+                        // Menu close invalidates both a completed snapshot and
+                        // an in-flight capture. Do not republish an old session.
+                        if (generation.load() == session && inspection.serial == serial) inspection = std::move(next);
+                    }
+                    inspectionQueued.store(false);
+                });
+            } catch (...) {
+                std::lock_guard lock(inspectionMutex);
+                if (inspection.serial == serial) inspection.state = "dispatch-failed";
+                inspectionQueued.store(false); return false;
+            }
+            return true;
+        }
+        void WritePoint(RE::GFxMovie* movie, RE::GFxValue& target, const char* key, const RE::NiPoint3& point)
+        {
+            RE::GFxValue value; movie->CreateArray(&value);
+            value.PushBack(RE::GFxValue{static_cast<double>(point.x)});
+            value.PushBack(RE::GFxValue{static_cast<double>(point.y)});
+            value.PushBack(RE::GFxValue{static_cast<double>(point.z)});
+            target.SetMember(key, value);
+        }
+        void WriteTransform(RE::GFxMovie* movie, RE::GFxValue& target, const char* key, const RE::NiTransform& transform)
+        {
+            RE::GFxValue value, matrix; movie->CreateObject(&value); movie->CreateArray(&matrix);
+            WritePoint(movie, value, "position", transform.translate);
+            value.SetMember("scale", RE::GFxValue{static_cast<double>(transform.scale)});
+            for (unsigned i = 0; i < 3; ++i) for (unsigned j = 0; j < 3; ++j)
+                matrix.PushBack(RE::GFxValue{static_cast<double>(transform.rotate.entry[i][j])});
+            value.SetMember("rotationRowMajor", matrix); target.SetMember(key, value);
+        }
+        void ReadInspection(RE::GFxMovie* movie, RE::GFxValue* result)
+        {
+            Inspection snapshot;
+            {
+                std::lock_guard lock(inspectionMutex);
+                snapshot = inspection;
+            }
+            if (snapshot.movieIdentity && snapshot.movieIdentity != movie) snapshot.state = "wrong-movie";
+            if (snapshot.serial && snapshot.session != generation.load()) snapshot.state = "expired";
+            movie->CreateObject(result);
+            result->SetMember("schemaVersion", RE::GFxValue{1.0});
+            result->SetMember("state", RE::GFxValue{snapshot.state});
+            const auto serial = std::to_string(snapshot.serial), session = std::to_string(snapshot.session);
+            result->SetMember("serial", RE::GFxValue{serial.c_str()});
+            result->SetMember("session", RE::GFxValue{session.c_str()});
+            result->SetMember("queued", RE::GFxValue{inspectionQueued.load()});
+            if (std::string_view(snapshot.state) != "captured") return;
+            result->SetMember("raceFormID", RE::GFxValue{static_cast<double>(snapshot.raceID)});
+            result->SetMember("cellFormID", RE::GFxValue{static_cast<double>(snapshot.cellID)});
+            result->SetMember("menuView", RE::GFxValue{static_cast<double>(snapshot.menuView)});
+            result->SetMember("viewYawDegrees", RE::GFxValue{static_cast<double>(snapshot.viewYaw)});
+            result->SetMember("actorAngleValid", RE::GFxValue{snapshot.actorAngleValid});
+            result->SetMember("actorPositionValid", RE::GFxValue{snapshot.actorPositionValid});
+            if (snapshot.actorAngleValid) WritePoint(movie, *result, "actorAngleRadians", snapshot.actorAngle);
+            if (snapshot.actorPositionValid) WritePoint(movie, *result, "actorPosition", snapshot.actorPosition);
+            RE::GFxValue nodes; movie->CreateArray(&nodes);
+            for (std::size_t i = 0; i < snapshot.nodes.size(); ++i) {
+                const auto& node = snapshot.nodes[i];
+                RE::GFxValue value; movie->CreateObject(&value);
+                value.SetMember("role", RE::GFxValue{inspectionRoles[i]});
+                value.SetMember("present", RE::GFxValue{node.present});
+                if (node.present) {
+                    value.SetMember("identity", RE::GFxValue{node.identity.c_str()});
+                    value.SetMember("parentIdentity", RE::GFxValue{node.parentIdentity.c_str()});
+                    value.SetMember("name", RE::GFxValue{node.name.c_str()});
+                    value.SetMember("localValid", RE::GFxValue{node.localValid});
+                    value.SetMember("worldValid", RE::GFxValue{node.worldValid});
+                    if (node.localValid) WriteTransform(movie, value, "local", node.local);
+                    if (node.worldValid) WriteTransform(movie, value, "world", node.world);
+                    value.SetMember("ancestryComplete", RE::GFxValue{node.ancestryComplete});
+                    value.SetMember("sharesTrackingOrigin", RE::GFxValue{node.sharesOrigin});
+                    RE::GFxValue ancestors; movie->CreateArray(&ancestors);
+                    for (unsigned j = 0; j < node.ancestorCount; ++j) ancestors.PushBack(RE::GFxValue{node.ancestors[j].c_str()});
+                    value.SetMember("ancestorsSelfFirst", ancestors);
+                }
+                nodes.PushBack(value);
+            }
+            result->SetMember("nodes", nodes);
+        }
         bool OwnYaw()
         { return yawRoom && yawRoom->parent==yawParent.get() && CameraPolicy::Same(yawRoom->local,yawLast) &&
             CameraPolicy::Same(yawParent->world,yawParentWorld); }
@@ -242,6 +430,15 @@ namespace SKEE::FaceView
             void Call(Params& args) override
             {
                 const auto operation = reinterpret_cast<std::uintptr_t>(args.userData);
+                if (operation == 5) {
+                    const bool accepted = args.argCount == 0 && RequestInspection(args.movie);
+                    if (args.retVal) args.retVal->SetBoolean(accepted);
+                    return;
+                }
+                if (operation == 6) {
+                    if (args.argCount == 0 && args.retVal) ReadInspection(args.movie, args.retVal);
+                    return;
+                }
                 if (operation == 3 && args.retVal) {
                     args.movie->CreateObject(args.retVal);
                     args.retVal->SetMember("anchorRefreshes",RE::GFxValue{static_cast<double>(anchorRefreshes.load())});
@@ -328,6 +525,10 @@ namespace SKEE::FaceView
     void Restore()
     {
         generation.fetch_add(1);
+        {
+            std::lock_guard lock(inspectionMutex);
+            inspection.state = "expired";
+        }
         if (yawRoom && !RemoveYaw()) {
             // A competing transform owns the whole pose. Do not subtract a
             // stale face offset merely because its translation still matches.
@@ -372,5 +573,13 @@ namespace SKEE::FaceView
         movie->CreateFunction(&testYaw,handler.get(),reinterpret_cast<void*>(4));
         root->SetMember("SetViewYaw",testYaw);
         movie->SetVariable("_root.TestVRViewYaw",testYaw);
+        constexpr const char* inspectionNames[]{"CaptureCharacterInspection", "GetCharacterInspection"};
+        constexpr const char* inspectionAliases[]{"_root.CaptureVRCharacterInspection", "_root.GetVRCharacterInspection"};
+        for (std::uintptr_t i = 0; i < std::size(inspectionNames); ++i) {
+            RE::GFxValue function;
+            movie->CreateFunction(&function, handler.get(), reinterpret_cast<void*>(5 + i));
+            root->SetMember(inspectionNames[i], function);
+            movie->SetVariable(inspectionAliases[i], function);
+        }
     }
 }
