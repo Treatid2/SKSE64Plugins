@@ -35,6 +35,9 @@ the rendering hook. The existing avatar-local detail lights turn with the model.
 Extension requests revalidate their originating movie and registration token.
 Close/reopen cancels old requests even with address reuse. View yaw no longer drops
 the final absolute slider input merely because another input is pending.
+Inputs already dispatched on a game task do not enqueue another view-yaw task.
+The registry keeps their current values without invalidating the actively dragged
+renderer; corrections and external changes still publish a new revision.
 
 ## Verification boundaries
 

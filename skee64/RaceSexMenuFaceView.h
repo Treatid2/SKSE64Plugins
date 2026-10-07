@@ -13,6 +13,7 @@ namespace SKEE::FaceView
     bool GetCameraTransform(RE::NiPoint3& position, RE::NiMatrix3& rotation);
     bool RequestCameraPosition(const RE::NiPoint3& position);
     float ViewYaw();
-    bool RequestViewYaw(float degrees, RE::GFxMovie* movie);
+    // Internal extension callback only: caller must already be on a game task.
+    bool ApplyViewYawOnGameTask(float degrees, RE::GFxMovie* movie);
     void RefreshAvatarAnchor();
 }

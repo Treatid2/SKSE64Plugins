@@ -119,7 +119,10 @@ namespace SKEE::MenuExtensions
                             IMenuExtensions::SliderCallback callback{}; void* context{};
                             { std::scoped_lock lock(service.mutex); auto it = service.sliders.find(key);
                               if (it == service.sliders.end() || it->second.token != token) return;
-                              if (it->second.value != value) { it->second.value = value; ++service.revision; }
+                              // The live slider already displays its own input.
+                              // Do not rebuild its renderer while it is dragged;
+                              // SetValue still publishes corrections/external edits.
+                              it->second.value = value;
                               callback = it->second.callback; context = it->second.context; }
                             try { callback(value,context); } catch (...) { SKSE::log::warn("RaceMenu extension slider callback threw"); }
                         });

@@ -500,12 +500,10 @@ namespace SKEE::FaceView
             const auto session=generation.load();
             try {
                 tasks->AddTask([requested,identity,session] {
-                    auto* ui=RE::UI::GetSingleton();
-                    auto menu=ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
-                    if (generation.load()!=session || !menu || menu->uiMovie.get()!=identity ||
-                        !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) yawState.store(3);
-                    else if (!ApplyYaw(requested)) yawState.store(2);
-                    MenuExtensions::GetInterface()->SetValue("RaceMenuVR2", "viewYaw", yawDegrees.load());
+                    try {
+                        if (generation.load()!=session) yawState.store(3);
+                        else if (!ApplyViewYawOnGameTask(requested, identity)) yawState.store(2);
+                    } catch (...) { yawState.store(2); }
                     yawPending.fetch_sub(1);
                 });
             } catch (...) { yawPending.fetch_sub(1); return false; }
@@ -584,7 +582,16 @@ namespace SKEE::FaceView
     bool Supported() { return enabled && REL::Module::IsVR(); }
     unsigned Current() { return view.load(); } // 0 normal, 1 face, 2 unavailable
     float ViewYaw() { return yawDegrees.load(); }
-    bool RequestViewYaw(float degrees, RE::GFxMovie* movie) { return RequestYaw(degrees, movie); }
+    bool ApplyViewYawOnGameTask(float degrees, RE::GFxMovie* identity)
+    {
+        auto* ui = RE::UI::GetSingleton();
+        auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+        if (!Supported() || !identity || !menu || menu->uiMovie.get() != identity ||
+            !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) return false;
+        const bool applied = ApplyYaw(degrees);
+        MenuExtensions::GetInterface()->SetValue("RaceMenuVR2", "viewYaw", yawDegrees.load());
+        return applied;
+    }
     void RefreshAvatarAnchor() { avatarRevision.fetch_add(1); }
     bool GetCameraTransform(RE::NiPoint3& position, RE::NiMatrix3& rotation)
     {
@@ -836,13 +843,19 @@ namespace SKEE::CharacterInspection
         }
         void ViewSlider(double value, void*)
         {
-            if (!FaceView::RequestViewYaw(static_cast<float>(value), movieIdentity))
+            // MenuExtensions already dispatches on a game task; no second
+            // delayed queue or transient reset of the displayed slider value.
+            if (!FaceView::ApplyViewYawOnGameTask(static_cast<float>(value), movieIdentity))
                 MenuExtensions::GetInterface()->SetValue(provider, "viewYaw", FaceView::ViewYaw());
         }
         RE::UI_MESSAGE_RESULTS ProcessHook(RE::RaceSexMenu* menu, RE::UIMessage& message)
         {
-            const bool update = message.type == RE::UI_MESSAGE_TYPE::kUpdate;
-            const bool close = message.type == RE::UI_MESSAGE_TYPE::kHide || message.type == RE::UI_MESSAGE_TYPE::kForceHide;
+            auto* ui = RE::UI::GetSingleton();
+            auto liveMenu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+            const bool update = message.type == RE::UI_MESSAGE_TYPE::kUpdate && liveMenu.get() == menu &&
+                ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME);
+            const bool close = menu && menu->uiMovie.get() == movieIdentity &&
+                (message.type == RE::UI_MESSAGE_TYPE::kHide || message.type == RE::UI_MESSAGE_TYPE::kForceHide);
             const float priorYaw = appliedYaw;
             auto* priorRoot = avatar.get();
             if (update || close) {
@@ -854,8 +867,8 @@ namespace SKEE::CharacterInspection
             // Exactly one native call, unchanged arguments, regardless of feature failure.
             const auto result = original(menu, message);
             if (update && menu && menu->uiMovie) {
-                auto* ui = RE::UI::GetSingleton();
-                if (ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) {
+                liveMenu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+                if (ui && liveMenu.get() == menu && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) {
                     try {
                         Register(menu->uiMovie.get());
                         if (!rejected && requestedYaw != 0 && !ApplyPreview()) Reject("unsupported avatar transform/bounds graph");

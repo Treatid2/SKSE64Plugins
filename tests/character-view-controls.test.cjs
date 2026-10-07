@@ -29,6 +29,8 @@ test('preview surrounds exactly one native update and never changes saved facing
   assert.ok(hook.indexOf('RemovePreview(false)') < hook.indexOf('original(menu, message)'));
   assert.ok(hook.indexOf('original(menu, message)') < hook.indexOf('ApplyPreview()'));
   assert.match(hook, /kUpdate/); assert.match(hook, /kHide/); assert.match(hook, /kForceHide/);
+  assert.match(hook, /liveMenu.get\(\) == menu/);
+  assert.match(hook, /menu->uiMovie.get\(\) == movieIdentity/);
   assert.match(body('ApplyPreview'), /p.Transpose\(\)\*yaw\*p\*baseline/);
   assert.match(body('ApplyPreview'), /root->local.rotate = previewRotation/);
   assert.doesNotMatch(source.replace(/\/\/[^\r\n]*/g, ''), /->local\s*=|->local.translate\s*=|->local.scale\s*=|->Update\(|UpdateWorldData|SetAngle\(/);
@@ -71,6 +73,10 @@ test('queued extension inputs require exact live movie and fresh registration to
   assert.match(extensions, /!ui->IsMenuOpen/);
   assert.match(extensions, /it->second.token != token/);
   assert.match(extensions, /item->second.value != value/);
+  const input = extensions.slice(extensions.indexOf('tasks->AddTask([key, token, value, identity]'));
+  assert.doesNotMatch(input, /\+\+service.revision/);
+  assert.match(body('ViewSlider'), /ApplyViewYawOnGameTask/);
+  assert.doesNotMatch(body('ViewSlider'), /RequestViewYaw/);
   assert.match(read('CharacterCreationInterface.cpp'), /CharacterInspection::Restore\(\);\s*SKEE::FaceView::Restore\(\)/);
 });
 test('view slider retains final queued input and structural avatar changes refresh face anchor', () => {
