@@ -52,6 +52,9 @@ test('graph collection validates bounded topology and pure native dispatch befor
   assert.match(collect, /child->parent != node/);
   assert.match(collect, /!seen.insert\(child\).second/);
   assert.match(collect, /kFixedBound/);
+  assert.match(collect, /std::array<RE::NiAVObject\*, 4> protectedNodes/);
+  for (const node of ['RoomNode','HmdNode','uiNode','InWorldUIQuadGeo']) assert.ok(collect.includes('vr->'+node+'.get()'), node);
+  assert.match(collect, /std::find\(protectedNodes.begin\(\), protectedNodes.end\(\), object\)/);
   const apply = body('ApplyPreview');
   assert.ok(apply.indexOf('Collect(root, nodes, ancestors)') < apply.indexOf('root->local.rotate ='));
   const propagate = body('Propagate');

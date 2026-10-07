@@ -732,6 +732,16 @@ namespace SKEE::CharacterInspection
         bool Collect(RE::NiAVObject* root, std::vector<Node>& nodes, std::vector<RE::NiPointer<RE::NiNode>>& ancestors)
         {
             if (!root) return false;
+#if defined(ENABLE_SKYRIM_VR)
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            auto* vr = player ? player->GetVRNodeData() : nullptr;
+            if (!REL::Module::IsVR() || !vr || !vr->RoomNode || !vr->HmdNode) return false;
+            const std::array<RE::NiAVObject*, 4> protectedNodes{
+                vr->RoomNode.get(), vr->HmdNode.get(), vr->uiNode.get(), vr->InWorldUIQuadGeo.get()};
+#else
+            return false;
+            const std::array<RE::NiAVObject*, 4> protectedNodes{};
+#endif
             const auto base = REL::Module::get().base();
             std::unordered_set<RE::NiAVObject*> seen;
             for (auto* p = root->parent; p; p = p->parent) {
@@ -745,6 +755,10 @@ namespace SKEE::CharacterInspection
             nodes.push_back({RE::NiPointer<RE::NiAVObject>{root}, 0}); seen.insert(root);
             for (std::size_t i = 0; i < nodes.size(); ++i) {
                 auto* object = nodes[i].object.get(); const auto depth = nodes[i].depth;
+                // Refuse a mod-altered hierarchy containing tracked/interactive
+                // nodes. Whole-avatar rotation must never rotate the headset,
+                // controllers' tracking origin, menu surface or pointer quad.
+                if (std::find(protectedNodes.begin(), protectedNodes.end(), object) != protectedNodes.end()) return false;
                 const auto table = *reinterpret_cast<const std::uintptr_t*>(object);
                 if (!InRdata(table, 0x31*sizeof(std::uintptr_t)) || !Frame(object->local) || !Frame(object->world)) return false;
                 const auto* functions = reinterpret_cast<const std::uintptr_t*>(table);

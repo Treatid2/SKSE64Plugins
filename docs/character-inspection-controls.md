@@ -31,6 +31,8 @@ bounds. Foreign dispatch, fixed bounds, malformed transforms or excessive graph
 size/depth reject preview rotation and log a warning; these are intentionally not
 guessed compatibility paths. Scene updates use the native menu-update stage, not
 the rendering hook. The existing avatar-local detail lights turn with the model.
+The graph explicitly excludes the tracked room, HMD, menu and pointer quad, so a
+mod-altered hierarchy cannot accidentally turn those with the whole avatar.
 
 Extension requests revalidate their originating movie and registration token.
 Close/reopen cancels old requests even with address reuse. View yaw no longer drops
