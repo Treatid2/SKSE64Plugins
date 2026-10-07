@@ -4,6 +4,7 @@
 #include "CharacterInspectionControls.h"
 #include "MenuExtensions.h"
 #include <atomic>
+#include <algorithm>
 #include <cmath>
 #include <array>
 #include <mutex>
