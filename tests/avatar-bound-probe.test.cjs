@@ -15,7 +15,7 @@ function body(name) {
 }
 test('explicit graph probe bypasses only fixed-bound rejection, without changing production defaults', () => {
   assert.match(source, /GraphInspection\* inspection = nullptr/);
-  const collect = body('Collect');
+  const collect = body('CollectAncestors') + body('CollectObjects');
   assert.match(collect, /kFixedBound\) && !inspection\)\s*return Fail\("ancestor-fixed-bound"/);
   assert.match(collect, /kFixedBound\) && !inspection\)\s*return Fail\("object-fixed-bound"/);
   assert.match(collect, /inspection->validatedNodes = i\+1/);
@@ -23,7 +23,8 @@ test('explicit graph probe bypasses only fixed-bound rejection, without changing
     assert.match(collect, new RegExp('Fail\\("'+reason+'"[^;]*diagnostic\\)'));
   assert.match(body('Fail'), /auto& failure = diagnostic \? \*diagnostic : refusal/);
   const probe = body('InspectGraphBounds');
-  assert.match(probe, /Collect\(root, nodes, ancestors, &inspection\)/);
+  assert.match(probe, /CollectAncestors\(root, ancestors, &ancestorInspection\)/);
+  assert.match(probe, /CollectObjects\(root, nodes, ancestors, protectedNodes, &inspection\)/);
   assert.doesNotMatch(probe.replace(/\/\/[^\n]*/g,''), /Propagate\(|ApplyPreview\(|SceneFunction|refusal\s*=|rejected\s*=|->(?:world|local|worldBound)\s*=/);
   assert.match(source, /\{"avatarBoundProbe", InspectGraphBounds\(\)\}/);
   assert.match(source, /if \(!Collect\(root, nodes, ancestors\)\) return false/);
@@ -34,11 +35,37 @@ test('partial coverage is explicit; containment never asserts rotation qualifica
   assert.match(probe, /"fixedBoundGuardRelaxedForApplication", false/);
   assert.match(probe, /i < inspection.validatedNodes/);
   assert.match(probe, /"sphereCoverage"\] = "validated-nodes-only"/);
-  assert.match(probe, /complete && invalid == 0 && positive > 0/);
+  assert.match(probe, /descendantsComplete && invalid == 0 && positive > 0/);
   assert.match(probe, /containsSampledFullTurnEnvelope"\] = nullptr/);
   assert.match(probe, /fixedObjects.size\(\) < 8/);
   assert.match(probe, /skin-owned sphere\/AABB.*remain unqualified/);
   assert.match(probe, /composerSkipFlagBit9Count/);
+});
+test('ancestor refusal cannot suppress read-only descendant inspection or turn it into application permission', () => {
+  const probe = body('InspectGraphBounds');
+  assert.match(probe, /GraphInspection ancestorInspection, inspection/);
+  assert.match(probe, /const bool complete = ancestorComplete && descendantsComplete/);
+  assert.match(probe, /"ancestorChainComplete"\] = ancestorComplete/);
+  assert.match(probe, /"descendantGraphCompleteIgnoringFixedBound"\] = descendantsComplete/);
+  assert.match(probe, /"ancestorFailure"\] = ancestorInspection.failure/);
+  assert.match(probe, /"descendantFailure"\] = inspection.failure/);
+  assert.doesNotMatch(probe, /if\s*\(ancestorComplete\)|ancestorComplete\s*&&\s*CollectObjects|else descendantsComplete/);
+  const strict = body('Collect');
+  assert.match(strict, /if \(!CollectAncestors\(root, ancestors\)\) return false/);
+  assert.match(strict, /return CollectObjects\(root, nodes, ancestors, protectedNodes\)/);
+  assert.doesNotMatch(strict, /GraphInspection|inspection/);
+  assert.match(body('CollectObjects'), /for \(const auto& ancestor : ancestors\) seen.insert\(ancestor.get\(\)\)/);
+  assert.match(body('CollectObjects'), /if \(!seen.insert\(root\).second\) return Fail/);
+  // Independent coverage reference: a complete avatar branch may be sampled
+  // despite failed ancestor qualification; neither case authorises rotation.
+  const coverage = (ancestor, descendants, invalid, positive) => ({
+    graph: ancestor && descendants,
+    envelope: descendants && invalid === 0 && positive > 0,
+    rotation: false,
+  });
+  assert.deepEqual(coverage(false, true, 0, 8), {graph:false,envelope:true,rotation:false});
+  assert.deepEqual(coverage(true, false, 0, 8), {graph:false,envelope:false,rotation:false});
+  assert.deepEqual(coverage(true, true, 1, 8), {graph:true,envelope:false,rotation:false});
 });
 test('both copied readouts expose only finite bounds, independent of live scene reads', () => {
   const capture = source.slice(source.indexOf('InspectionNode CaptureNode'),source.indexOf('bool RequestInspection'));

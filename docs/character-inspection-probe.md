@@ -107,6 +107,19 @@ bounded by the depth limit. `geometryBoundsRoutineCount` identifies CB78C0,
 not necessarily skinned meshes. `composerSkipFlagBit9Count` records the raw bit
 that the inspected composer tests without borrowing an unqualified semantic name.
 
+The independent-coverage successor separates ancestor and descendant contracts.
+`ancestorFailure` and `descendantFailure` preserve both findings; the legacy
+`firstOtherFailure` remains ancestor-first. An unsupported parent no longer
+prevents read-only traversal of the avatar branch. `ancestorChainComplete` is true
+only when all ancestor contracts passed; `descendantGraphCompleteIgnoringFixedBound`
+reports the branch separately. `graphCompleteIgnoringFixedBound` requires both.
+Sphere coverage still includes validated nodes only. A complete descendant branch
+can produce a complete sampled envelope even when ancestor qualification fails;
+containment is then reported only for the observed qualified ancestor prefix.
+This is geometric observation, not proof of that ancestor's culling semantics.
+Partial descendant coverage still leaves containment null. Application continues
+to require both strict contracts, including fixed-bound rejection, before writing.
+
 The sampled full-turn envelope is a sphere about the avatar world pivot. Each
 positive sphere contributes distance-to-pivot plus radius. Empty spheres are
 ignored; invalid samples prevent complete coverage. Complete sampled envelopes
@@ -118,6 +131,11 @@ rendered culling. `rotationQualified` remains false even if containment succeeds
 Engine evidence: the qualified C9DC10 parent-bound routine returns without bound
 writes when VR flag bit13 is set. That explains why a fixed ancestor need not
 automatically forbid child rotation, but does not qualify the remaining path.
+The subsequently observed ancestor handler D9F380 is associated with
+BSMultiBoundNode (GetRTTI returns the exact pinned CommonLib NiRTTI RVA317CBB0).
+It can delegate bounds to a separate multi-bound shape, or merge child spheres
+while copying additional bound-related fields. It is not added to the application
+whitelist; ordinary containing-sphere assumptions do not qualify this path.
 
 ## Next live evidence, after a separately authorised installation
 

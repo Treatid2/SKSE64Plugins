@@ -45,18 +45,21 @@ test('restoration retains translation/scale and refuses foreign or replacement p
   assert.match(body('Restore'), /UnregisterProvider\(provider\)/);
 });
 test('graph collection validates bounded topology and pure native dispatch before writing', () => {
-  const collect = body('Collect');
+  const collect = body('CollectAncestors') + body('CollectObjects') + body('TrackingNodes');
   assert.match(source, /maxNodes = 4096, maxDepth = 64/);
   for (const rva of ['C9BCE0','C9DEA0','C9DC10','CB78C0','C9C700']) assert.ok(collect.includes(rva), rva);
   assert.match(collect, /children.free_idx\(\) > children.capacity\(\)/);
   assert.match(collect, /child->parent != node/);
   assert.match(collect, /!seen.insert\(child\).second/);
   assert.match(collect, /kFixedBound/);
-  assert.match(collect, /std::array<RE::NiAVObject\*, 4> protectedNodes/);
+  assert.match(source, /using ProtectedNodes = std::array<RE::NiAVObject\*, 4>/);
   for (const node of ['RoomNode','HmdNode','uiNode','InWorldUIQuadGeo']) assert.ok(collect.includes('vr->'+node+'.get()'), node);
   assert.match(collect, /std::find\(protectedNodes.begin\(\), protectedNodes.end\(\), object\)/);
   const apply = body('ApplyPreview');
   assert.ok(apply.indexOf('Collect(root, nodes, ancestors)') < apply.indexOf('root->local.rotate ='));
+  assert.match(body('Collect'), /if \(!CollectAncestors\(root, ancestors\)\) return false/);
+  assert.match(body('Collect'), /return CollectObjects\(root, nodes, ancestors, protectedNodes\)/);
+  assert.doesNotMatch(body('Collect'), /&inspection|&ancestorInspection/);
   const propagate = body('Propagate');
   assert.match(propagate, /nodes.rbegin\(\)/);
   assert.match(propagate, /for \(const auto& node : ancestors\) refit/);

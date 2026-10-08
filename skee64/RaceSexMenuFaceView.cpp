@@ -790,21 +790,25 @@ namespace SKEE::CharacterInspection
             return address >= data.address() && address <= data.address()+data.size() &&
                 bytes <= data.address()+data.size()-address;
         }
-        bool Collect(RE::NiAVObject* root, std::vector<Node>& nodes,
-            std::vector<RE::NiPointer<RE::NiNode>>& ancestors, GraphInspection* inspection = nullptr)
+        using ProtectedNodes = std::array<RE::NiAVObject*, 4>;
+        bool TrackingNodes(ProtectedNodes& protectedNodes, nlohmann::json* diagnostic = nullptr)
         {
-            auto* diagnostic = inspection ? &inspection->failure : nullptr;
-            if (!root) return Fail("missing-root", nullptr, 0, diagnostic);
 #if defined(ENABLE_SKYRIM_VR)
             auto* player = RE::PlayerCharacter::GetSingleton();
             auto* vr = player ? player->GetVRNodeData() : nullptr;
             if (!REL::Module::IsVR() || !vr || !vr->RoomNode || !vr->HmdNode) return Fail("tracking-unavailable", nullptr, 0, diagnostic);
-            const std::array<RE::NiAVObject*, 4> protectedNodes{
+            protectedNodes = {
                 vr->RoomNode.get(), vr->HmdNode.get(), vr->uiNode.get(), vr->InWorldUIQuadGeo.get()};
+            return true;
 #else
-            return false;
-            const std::array<RE::NiAVObject*, 4> protectedNodes{};
+            return Fail("tracking-unavailable", nullptr, 0, diagnostic);
 #endif
+        }
+        bool CollectAncestors(RE::NiAVObject* root,
+            std::vector<RE::NiPointer<RE::NiNode>>& ancestors, GraphInspection* inspection = nullptr)
+        {
+            auto* diagnostic = inspection ? &inspection->failure : nullptr;
+            if (!root) return Fail("missing-root", nullptr, 0, diagnostic);
             const auto base = REL::Module::get().base();
             std::unordered_set<RE::NiAVObject*> seen;
             for (auto* p = root->parent; p; p = p->parent) {
@@ -818,7 +822,19 @@ namespace SKEE::CharacterInspection
                     return Fail("ancestor-fixed-bound", p, ancestors.size());
                 ancestors.emplace_back(p);
             }
-            nodes.push_back({RE::NiPointer<RE::NiAVObject>{root}, 0}); seen.insert(root);
+            return true;
+        }
+        bool CollectObjects(RE::NiAVObject* root, std::vector<Node>& nodes,
+            const std::vector<RE::NiPointer<RE::NiNode>>& ancestors,
+            const ProtectedNodes& protectedNodes, GraphInspection* inspection = nullptr)
+        {
+            auto* diagnostic = inspection ? &inspection->failure : nullptr;
+            if (!root) return Fail("missing-root", nullptr, 0, diagnostic);
+            const auto base = REL::Module::get().base();
+            std::unordered_set<RE::NiAVObject*> seen;
+            for (const auto& ancestor : ancestors) seen.insert(ancestor.get());
+            if (!seen.insert(root).second) return Fail("child-cycle-or-limit", root, 0, diagnostic);
+            nodes.push_back({RE::NiPointer<RE::NiAVObject>{root}, 0});
             for (std::size_t i = 0; i < nodes.size(); ++i) {
                 auto* object = nodes[i].object.get(); const auto depth = nodes[i].depth;
                 // Refuse a mod-altered hierarchy containing tracked/interactive
@@ -853,6 +869,17 @@ namespace SKEE::CharacterInspection
             }
             return true;
         }
+        bool Collect(RE::NiAVObject* root, std::vector<Node>& nodes,
+            std::vector<RE::NiPointer<RE::NiNode>>& ancestors)
+        {
+            if (!root) return Fail("missing-root");
+            ProtectedNodes protectedNodes{};
+            if (!TrackingNodes(protectedNodes)) return false;
+            // Application still requires BOTH strict contracts before any write.
+            // Only the explicit read-only capture below inspects them independently.
+            if (!CollectAncestors(root, ancestors)) return false;
+            return CollectObjects(root, nodes, ancestors, protectedNodes);
+        }
         BoundProbe::Sphere WorldSphere(const RE::NiAVObject* object)
         {
             const auto& b = object->worldBound;
@@ -874,27 +901,38 @@ namespace SKEE::CharacterInspection
         nlohmann::json InspectGraphBounds()
         {
             // Called only by the explicit main-thread capture, never per frame.
-            // Collect's read-only mode bypasses fixed-bound rejection only; it
-            // cannot call Propagate/ApplyPreview or change the active refusal.
+            // Inspect the two contracts independently, bypassing only fixed-bound
+            // rejection. An unsupported ancestor must not hide avatar descendants.
+            // Neither pass can call Propagate/ApplyPreview or change active refusal.
             nlohmann::json result{{"mode", "read-only-sampled-spheres"},
                 {"rotationQualified", false}, {"fixedBoundGuardRelaxedForApplication", false}};
             if (!installed) { result["state"] = "hook-unavailable"; return result; }
             auto* root = LiveAvatar();
-            GraphInspection inspection;
+            GraphInspection ancestorInspection, inspection;
             std::vector<Node> nodes;
             std::vector<RE::NiPointer<RE::NiNode>> ancestors;
-            bool complete = false;
+            ProtectedNodes protectedNodes{};
+            bool ancestorComplete = false, descendantsComplete = false;
             if (!root) Fail("missing-avatar", nullptr, 0, &inspection.failure);
-            else if (!root->parent) Fail("missing-avatar-parent", root, 0, &inspection.failure);
-            else if (!Frame(root->parent->world)) Fail("avatar-parent-frame", root->parent, 0, &inspection.failure);
-            else complete = Collect(root, nodes, ancestors, &inspection);
+            else if (TrackingNodes(protectedNodes, &inspection.failure)) {
+                if (!root->parent) Fail("missing-avatar-parent", root, 0, &ancestorInspection.failure);
+                else if (!Frame(root->parent->world)) Fail("avatar-parent-frame", root->parent, 0, &ancestorInspection.failure);
+                else ancestorComplete = CollectAncestors(root, ancestors, &ancestorInspection);
+                // No virtual bounds/composer call is made. Retain prefix coverage
+                // and independently report descendant failures without masking them.
+                descendantsComplete = CollectObjects(root, nodes, ancestors, protectedNodes, &inspection);
+            }
+            const bool complete = ancestorComplete && descendantsComplete;
             result["state"] = complete ? "graph-contracts-inspected" : "partial";
             result["graphCompleteIgnoringFixedBound"] = complete;
-            result["firstOtherFailure"] = inspection.failure;
+            result["firstOtherFailure"] = ancestorInspection.failure.is_null() ? inspection.failure : ancestorInspection.failure;
+            result["ancestorFailure"] = ancestorInspection.failure;
+            result["descendantFailure"] = inspection.failure;
+            result["descendantGraphCompleteIgnoringFixedBound"] = descendantsComplete;
             result["enumeratedNodeCount"] = nodes.size();
             result["validatedNodeCount"] = inspection.validatedNodes;
             result["sphereCoverage"] = "validated-nodes-only";
-            result["ancestorChainComplete"] = !nodes.empty();
+            result["ancestorChainComplete"] = ancestorComplete;
             result["ancestorCount"] = ancestors.size();
             BoundProbe::Sphere envelope;
             if (root) envelope.center = {root->world.translate.x, root->world.translate.y, root->world.translate.z};
@@ -914,11 +952,11 @@ namespace SKEE::CharacterInspection
                 // Exact CB78C0 can copy skin-owned bounds; this count is not
                 // proof that a particular geometry has a skin instance.
                 if ((*reinterpret_cast<const std::uintptr_t* const*>(object))[0x30] == base+0xCB78C0) ++geometry;
-                // C9BCE0 skips composing world data when this raw bit is set.
+                // C9BCE0 copies the parent world transform when this raw bit is set.
                 // Do not infer semantics from CommonLib's borrowed flag name.
                 if (object->GetFlags().any(static_cast<RE::NiAVObject::Flag>(1u<<9))) ++skipCompose;
             }
-            const bool envelopeComplete = complete && invalid == 0 && positive > 0 && BoundProbe::Valid(envelope);
+            const bool envelopeComplete = descendantsComplete && invalid == 0 && positive > 0 && BoundProbe::Valid(envelope);
             result["positiveSphereCount"] = positive; result["emptySphereCount"] = empty;
             result["invalidSphereCount"] = invalid; result["fixedObjectCount"] = fixed;
             result["firstFixedObjects"] = std::move(fixedObjects);

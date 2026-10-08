@@ -49,6 +49,9 @@ The rejection is also logged once per movie. Avatar safety guards stay unchanged
 The next native-only successor adds the explicit graph-bound preflight described
 in [character-inspection-probe.md](character-inspection-probe.md). It looks beyond
 fixed-bound refusal for observation only; it does not enable avatar rotation.
+The independent-coverage successor also inspects the avatar descendants when an
+ancestor contract fails, retaining separate errors and coverage. No new engine
+bounds handler is called or authorised for rotation by this change.
 
 HUD suppression is excluded. The previous HUDMovieBaseInstance opacity experiment
 did not hide the human-observed marker; its presentation owner remains unknown.
