@@ -44,7 +44,7 @@ test('reference model: burst, quiet boundary, duplicate requests, cancellation a
   assert.equal(take(5,2999),undefined); assert.equal(take(5,3400),-0);
 });
 test('native update owns commit; pending value is not overwritten and close cancels', () => {
-  assert.match(face, /Register\(menu->uiMovie.get\(\)\);\s*CommitViewTrial\(\)/);
+  assert.match(face, /Register\(menu->uiMovie.get\(\)\);\s*ObserveAvatarLifecycle\(\);\s*CommitViewTrial\(\)/);
   assert.match(face, /if \(!viewTrial.pending\).*SetValue\(provider, "viewYaw", -FaceView::ViewYaw\(\)\)/);
   assert.match(face, /void Restore\(\)[\s\S]*viewTrial.Cancel\(\)/);
   assert.match(face, /refusal = nullptr; viewTrial = \{\}/);

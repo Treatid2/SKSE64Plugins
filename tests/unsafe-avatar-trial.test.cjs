@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../skee64/RaceSexMenuFaceView.cpp'), 'utf8')
   .split('namespace SKEE::CharacterInspection')[1];
 function body(name) {
-  const declaration = new RegExp('(?:bool|void|RE::UI_MESSAGE_RESULTS)\\s+'+name+'\\(').exec(source);
+  const declaration = new RegExp('(?:bool|void|RE::UI_MESSAGE_RESULTS)\\s+'+name+'\\([^;{}]*\\)\\s*\\{').exec(source);
   assert.ok(declaration, name);
   const start = source.indexOf('{', declaration.index); let end=start+1, depth=1;
   while (depth && end<source.length) { if(source[end]==='{')depth++; if(source[end]==='}')depth--; end++; }
@@ -25,12 +25,14 @@ test('unsafe path needs explicit per-menu opt-in and leaves strict production co
   assert.match(source, /"rotationQualified", false/);
 });
 test('trial validates a whole bounded avatar-only subtree before writing and calls no transform or refit target', () => {
-  const apply=body('ApplyTrialPreview');
+  const apply=body('ApplyTrialPreview'), collect=body('CollectTrialBranch');
   for(const guard of ['trial-protected-tracking-or-ui-node','trial-object-vtable','trial-object-frame-or-sphere',
     'trial-child-array-contract','trial-child-parent-mismatch','trial-child-cycle-or-limit','trial-ancestor-cycle-or-depth'])
-    assert.ok(apply.includes(guard),guard);
-  assert.match(apply, /depth\+1 > maxDepth \|\| nodes.size\(\) >= maxNodes/);
-  assert.match(apply, /seen.count\(p\)/);
+    assert.ok(collect.includes(guard),guard);
+  assert.match(collect, /depth\+1 > maxDepth \|\| nodes.size\(\) >= maxNodes/);
+  assert.match(collect, /seen.count\(p\)/);
+  assert.match(apply, /if \(!CollectTrialBranch\(root, nodes\)\) return false/);
+  assert.doesNotMatch(collect, /->(?:local|world|worldBound|parent)\s*=|Propagate\(|SceneFunction|->Update\(/);
   assert.ok(apply.indexOf('planned.push_back') < apply.indexOf('root->local.rotate ='));
   assert.ok(apply.indexOf('trialNodes = std::move(planned)') < apply.indexOf('root->local.rotate ='));
   assert.doesNotMatch(apply.replace(/\/\/[^\n]*/g,''), /Propagate\(|SceneFunction|SetAngle\(|->Update\(|UpdateWorldData|0x3CC170|0xD9F380/);
@@ -38,6 +40,51 @@ test('trial validates a whole bounded avatar-only subtree before writing and cal
   assert.match(apply, /copy.trialWorld.rotate = yaw\*copy.nativeWorld.rotate/);
   assert.match(apply, /pivot\+yaw\*\(copy.nativeWorld.translate-pivot\)/);
   assert.doesNotMatch(apply, /->local.translate\s*=|->local.scale\s*=|->parent->(?:world|local|worldBound)\s*=/);
+});
+
+test('replacement resets angle and stale tokens only after bounded qualification; same-root latch survives', () => {
+  const observe=body('ObserveAvatarLifecycle');
+  assert.match(source, /RE::NiPointer<RE::NiAVObject> lifecycleRoot/);
+  assert.match(observe, /if \(lifecycleRoot.get\(\) == root\) return false/);
+  assert.ok(observe.indexOf('lifecycleRoot.get() == root') < observe.indexOf('RemovePreview(false)'));
+  assert.ok(observe.indexOf('RemovePreview(false)') < observe.indexOf('lifecycleRoot.reset(root); ++avatarReplacements'));
+  assert.match(observe, /requestedYaw = appliedYaw = 0/);
+  assert.match(observe, /unsafeTrialEnabled \? CollectTrialBranch\(root, nodes\)/);
+  assert.match(observe, /Collect\(root, nodes, ancestors\)/);
+  assert.ok(observe.indexOf('CollectTrialBranch(root, nodes)') < observe.indexOf('rejected = !valid'));
+  assert.match(observe, /replacementRefusal = refusal/);
+  assert.equal((observe.match(/RegisterSlider\(/g)||[]).length,2);
+  assert.match(observe, /if \(!registered\)/);
+  assert.doesNotMatch(observe, /ApplyPreview\(|->(?:local|world|worldBound|parent)\s*=|Propagate\(|->Update\(/);
+  assert.match(body('AvatarSlider'), /if \(ObserveAvatarLifecycle\(\)\) return/);
+  assert.match(body('UnsafeTrialSlider'), /if \(ObserveAvatarLifecycle\(\)\) return/);
+  const hook=body('ProcessHook');
+  assert.ok(hook.indexOf('ObserveAvatarLifecycle()') < hook.indexOf('original(menu, message)'));
+  assert.ok(hook.lastIndexOf('ObserveAvatarLifecycle()') > hook.indexOf('original(menu, message)'));
+  assert.match(body('Restore'), /lifecycleRoot.reset\(\); avatarReplacements = 0/);
+});
+
+test('root lifecycle independent reference covers rejection, rebuild, missing 3D and token cancellation', () => {
+  // State-machine reference, not native execution or proof of GFx task order.
+  const state={root:'Nord1',rejected:true,yaw:0,token:1,optIn:true,replacements:0};
+  const observe=(root,valid)=>{
+    if(!root){state.yaw=0;state.rejected=true;return true;}
+    if(root===state.root)return false;
+    state.root=root;state.yaw=0;state.rejected=!valid;state.replacements++;state.token++;
+    return true;
+  };
+  assert.equal(observe('Nord1',true),false);assert.equal(state.rejected,true);
+  const queuedToken=state.token;
+  assert.equal(observe('Argonian1',true),true);assert.equal(state.rejected,false);
+  assert.notEqual(queuedToken,state.token);assert.equal(state.yaw,0);assert.equal(state.optIn,true);
+  state.yaw=45;
+  observe(null,false);assert.equal(state.yaw,0);assert.equal(state.rejected,true);
+  observe('Argonian1',true);assert.equal(state.rejected,true);
+  observe('Nord2',true);assert.equal(state.rejected,false);
+  observe('Broken3',false);assert.equal(state.rejected,true);
+  observe('Broken3',true);assert.equal(state.rejected,true); // no same-root automatic retry
+  observe('Nord4',true);assert.equal(state.rejected,false);
+  assert.equal(state.replacements,4);
 });
 test('trial stages inverse-current-pose removal before writes and keeps conservative refusal recovery', () => {
   assert.match(body('RemovePreview'), /if \(!trialNodes.empty\(\)\) return RemoveTrialPreview\(\)/);

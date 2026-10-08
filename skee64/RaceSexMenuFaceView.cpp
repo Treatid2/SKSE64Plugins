@@ -766,6 +766,12 @@ namespace SKEE::CharacterInspection
             return false;
         }
         RE::NiPointer<RE::NiAVObject> avatar;
+        // Keep the observed root alive so address reuse cannot masquerade as
+        // the same avatar after an asynchronous race/sex rebuild.
+        RE::NiPointer<RE::NiAVObject> lifecycleRoot;
+        std::uint64_t avatarReplacements{};
+        const char* lifecycleState{"not-observed"};
+        nlohmann::json replacementRefusal;
         RE::NiPointer<RE::NiNode> parent;
         RE::NiMatrix3 nativeRotation{}, previewRotation{};
         struct Node { RE::NiPointer<RE::NiAVObject> object; std::size_t depth; };
@@ -1215,16 +1221,14 @@ namespace SKEE::CharacterInspection
             trialNodes.clear(); avatar.reset(); parent.reset(); appliedYaw = 0;
             return owned;
         }
-        bool ApplyTrialPreview(RE::NiAVObject* root)
+        bool CollectTrialBranch(RE::NiAVObject* root, std::vector<Node>& nodes)
         {
-            // Deliberately experimental: do NOT execute unqualified virtual
-            // composers, bounds routines, animation, collision or ancestor refits.
-            // Instead rigidly rotate copied world poses/sphere centers after the
-            // native menu update. Skin/culling/cache correctness is NOT qualified.
+            if (!root || !root->parent) return Fail("trial-missing-root-or-parent", root);
+            if (!Frame(root->parent->world)) return Fail("trial-parent-frame", root->parent);
             ProtectedNodes protectedNodes{};
             if (!TrackingNodes(protectedNodes)) return false;
             std::unordered_set<RE::NiAVObject*> seen;
-            std::vector<Node> nodes{{RE::NiPointer<RE::NiAVObject>{root}, 0}};
+            nodes.push_back({RE::NiPointer<RE::NiAVObject>{root}, 0});
             seen.insert(root);
             for (std::size_t i = 0; i < nodes.size(); ++i) {
                 auto* object = nodes[i].object.get(); const auto depth = nodes[i].depth;
@@ -1254,6 +1258,14 @@ namespace SKEE::CharacterInspection
                 if (ancestorSeen.size() >= maxDepth || seen.count(p) || !ancestorSeen.insert(p).second)
                     return Fail("trial-ancestor-cycle-or-depth", p, ancestorSeen.size());
             }
+            return true;
+        }
+        bool ApplyTrialPreview(RE::NiAVObject* root)
+        {
+            // Deliberately experimental: no unqualified composer, skin update
+            // or ancestor refit. Collection is also the read-only rebuild gate.
+            std::vector<Node> nodes;
+            if (!CollectTrialBranch(root, nodes)) return false;
             RE::NiTransform identity;
             const auto yaw = CameraPolicy::YawAroundEye(identity, {}, requestedYaw).rotate;
             const auto pivot = root->world.translate;
@@ -1344,8 +1356,12 @@ namespace SKEE::CharacterInspection
             appliedYaw = requestedYaw;
             return true;
         }
+        bool ObserveAvatarLifecycle();
         void AvatarSlider(double value, void*)
         {
+            // A task admitted under the old slider token must not turn a new
+            // avatar. Observing a replacement cancels this input as well.
+            if (ObserveAvatarLifecycle()) return;
             if (!installed || rejected || !movieIdentity || !std::isfinite(value) || std::abs(value) > 180) {
                 MenuExtensions::GetInterface()->SetValue(provider, "avatarYaw", appliedYaw); return;
             }
@@ -1354,6 +1370,7 @@ namespace SKEE::CharacterInspection
         void UnsafeTrialSlider(double value, void*)
         {
             if (!installed || !movieIdentity || (value != 0 && value != 1)) return;
+            if (ObserveAvatarLifecycle()) return;
             if (!RemovePreview()) {
                 unsafeTrialEnabled = false;
                 Reject("unsafe trial restoration ownership conflict");
@@ -1367,6 +1384,57 @@ namespace SKEE::CharacterInspection
             service->SetValue(provider, "avatarYaw", appliedYaw);
             service->SetValue(provider, "unsafeAvatarTrial", unsafeTrialEnabled ? 1 : 0);
             FaceView::RefreshAvatarAnchor();
+        }
+        bool ObserveAvatarLifecycle()
+        {
+            auto* root = LiveAvatar();
+            if (!root) {
+                lifecycleState = "avatar-unavailable";
+                if (lifecycleRoot) Reject("avatar unavailable after root observation");
+                requestedYaw = 0;
+                MenuExtensions::GetInterface()->SetValue(provider, "avatarYaw", 0);
+                // Retain lifecycleRoot across a temporary missing-3D interval.
+                // Do not clear a same-root refusal or replay any angle on return.
+                return true;
+            }
+            if (!lifecycleRoot) {
+                lifecycleRoot.reset(root); lifecycleState = "initial-root";
+                return false;
+            }
+            if (lifecycleRoot.get() == root) return false;
+
+            // RemovePreview sees a DIFFERENT live root and discards obsolete
+            // ownership without writing that retained branch or its replacement.
+            replacementRefusal = refusal;
+            if (!RemovePreview(false)) {
+                Reject("replacement preview discard failed"); return true;
+            }
+            lifecycleRoot.reset(root); ++avatarReplacements;
+            requestedYaw = appliedYaw = 0;
+            std::vector<Node> nodes;
+            std::vector<RE::NiPointer<RE::NiNode>> ancestors;
+            const bool valid = unsafeTrialEnabled ? CollectTrialBranch(root, nodes) :
+                (root->parent && Frame(root->local) && Frame(root->parent->world) &&
+                    Collect(root, nodes, ancestors));
+            lifecycleState = valid ? "replacement-qualified-angle-reset" : "replacement-refused";
+            // Only a fully collected replacement clears the old avatar's latch.
+            // A malformed SAME root cannot continuously restart the trial.
+            rejected = !valid;
+            if (valid) refusal = nullptr;
+            else refusal["stage"] = "replacement qualification failed";
+            auto* service = MenuExtensions::GetInterface();
+            // Fresh tokens invalidate old queued yaw/opt-in callbacks. Keep the
+            // human opt-in, but never carry their old angle onto the new model.
+            const bool registered = service->RegisterSlider({provider,"view","avatarYaw","Avatar rotation",-180,180,1,0,AvatarSlider,nullptr}) &&
+                service->RegisterSlider({provider,"view","unsafeAvatarTrial","Unsafe avatar trial",0,1,1,unsafeTrialEnabled ? 1.0 : 0.0,UnsafeTrialSlider,nullptr});
+            if (!registered) {
+                lifecycleState = "replacement-registration-failed";
+                service->UnregisterProvider(provider);
+                Reject("replacement slider registration failed");
+            }
+            FaceView::RefreshAvatarAnchor();
+            SKSE::log::info("RaceMenu avatar replacement observed: {}; angle reset; no saved actor rotation changed", lifecycleState);
+            return true;
         }
         void ViewSlider(double value, void*)
         {
@@ -1396,7 +1464,10 @@ namespace SKEE::CharacterInspection
             if (update || close) {
                 try {
                     if (close) Restore();
-                    else if (!RemovePreview(false)) Reject("preview ownership/topology changed");
+                    else {
+                        ObserveAvatarLifecycle();
+                        if (!RemovePreview(false)) Reject("preview ownership/topology changed");
+                    }
                 } catch (...) { Reject("pre-update validation failed"); }
             }
             // Exactly one native call, unchanged arguments, regardless of feature failure.
@@ -1406,6 +1477,7 @@ namespace SKEE::CharacterInspection
                 if (ui && liveMenu.get() == menu && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) {
                     try {
                         Register(menu->uiMovie.get());
+                        ObserveAvatarLifecycle();
                         CommitViewTrial();
                         if (!rejected && requestedYaw != 0 && !ApplyPreview()) Reject("unsupported avatar transform/bounds graph");
                         if (priorYaw != appliedYaw || (priorRoot && priorRoot != LiveAvatar())) FaceView::RefreshAvatarAnchor();
@@ -1470,6 +1542,8 @@ namespace SKEE::CharacterInspection
         } catch (...) { Reject("preview restoration validation failed"); }
         avatar.reset(); parent.reset(); requestedYaw = appliedYaw = 0;
         trialNodes.clear(); unsafeTrialEnabled = false;
+        lifecycleRoot.reset(); avatarReplacements = 0;
+        lifecycleState = "not-observed"; replacementRefusal = nullptr;
         unsafeTrialApplications = unsafeTrialRestoreConflicts = 0;
         trialRestoreReport = {}; trialAppliedAt = 0;
         movieIdentity = nullptr;
@@ -1552,6 +1626,9 @@ namespace SKEE::CharacterInspection
     nlohmann::json CaptureDiagnostics()
     {
         return {{"avatarRequestedYaw", requestedYaw}, {"avatarAppliedYaw", appliedYaw},
+            {"avatarLifecycle", {{"state", lifecycleState}, {"replacements", std::to_string(avatarReplacements)},
+                {"observedRoot", TrialIdentity(reinterpret_cast<std::uintptr_t>(lifecycleRoot.get()))},
+                {"previousRefusal", replacementRefusal}}},
             {"avatarRejected", rejected}, {"avatarRefusal", refusal},
             {"avatarBoundProbe", InspectGraphBounds()},
             {"unsafeAvatarTrial", {{"enabled", unsafeTrialEnabled}, {"mode", "rigid-world-preview-inverse-current-pose-assumption"},

@@ -35,6 +35,35 @@ are restored; no inverse plan is applied. The refusal latches. Replacement roots
 are discarded without writes. This is not guaranteed recovery after arbitrary
 external writes or a crash. No broad animation/collision update is forced.
 
+## Avatar rebuild boundary
+
+The 8a819de human trial rendered rotation on the initial Nord, then stopped after
+a race change. Its capture recorded 1,279 applications and a `child-topology`
+removal refusal. Returning to Nord produced a different avatar root, but the old
+menu-wide rejection remained. The exact offending child was not captured.
+
+The successor observes root identity before and after native menu updates and
+at avatar-control dispatch. A strong reference prevents address reuse from
+looking like continuity. A different root discards obsolete preview ownership
+without replaying its poses; yaw resets to zero. The replacement must pass the
+same bounded read-only collection used by its selected mode before the old
+refusal clears. Same-root topology/basis failures remain latched; no continuous
+retry is added. Invalid replacement qualification also latches. Explicit opt-in
+remains available for a human retry after inspecting a settled model.
+
+The existing human opt-in survives a valid rebuild, but its old angle does not.
+Fresh avatar-yaw/opt-in registration tokens cancel queued old-root inputs; a
+callback discovering a replacement itself is discarded. Temporary missing 3D
+cancels yaw and preserves a refusal on an observed root: returning the same root
+does not silently recover ownership. Close clears the retained lifecycle root.
+`controls.avatarLifecycle` reports state, replacement count, observed identity
+and previous refusal; `lastRestore` remains the latest removal observation.
+
+This is an observed replacement boundary, NOT a new hook before the native
+race/sex callback. Changes within the same root between updates still fail the
+topology guard. No callback ordering, external writer basis, skin/cache/bounds
+or rendered safety qualification is claimed by this correction.
+
 For a live test start with a small angle (e.g. 10–15 degrees), inspect body, hair
 and shadows, then return yaw to 0 and disable the trial before closing. Test
 face/normal view, +/-90 and 180 degrees only if the small trial is coherent.
