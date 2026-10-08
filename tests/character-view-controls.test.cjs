@@ -18,7 +18,7 @@ function body(name) {
 test('independent View sliders use existing extension interface and explicit zero defaults', () => {
   assert.match(source, /"view", "View", 1u<<30/);
   assert.match(source, /"avatarYaw","Avatar rotation",-180,180,1,0/);
-  assert.match(source, /"viewYaw","View direction",-60,60,1,FaceView::ViewYaw\(\)/);
+  assert.match(source, /"viewYaw","View direction",-60,60,1,-FaceView::ViewYaw\(\)/);
   assert.match(body('Register'), /movie == movieIdentity/);
   assert.match(body('Register'), /Restore\(\); movieIdentity = movie/);
   assert.doesNotMatch(source, /CreateFunction|SetVariable|SetAngle|SetRotation|RenderHook/);
@@ -78,7 +78,9 @@ test('queued extension inputs require exact live movie and fresh registration to
   assert.match(extensions, /item->second.value != value/);
   const input = extensions.slice(extensions.indexOf('tasks->AddTask([key, token, value, identity]'));
   assert.doesNotMatch(input, /\+\+service.revision/);
-  assert.match(body('ViewSlider'), /ApplyViewYawOnGameTask/);
+  assert.match(body('ViewSlider'), /viewTrial.Submit/);
+  assert.doesNotMatch(body('ViewSlider'), /ApplyViewYawOnGameTask/);
+  assert.match(body('CommitViewTrial'), /ApplyViewYawOnGameTask/);
   assert.doesNotMatch(body('ViewSlider'), /RequestViewYaw/);
   assert.match(read('CharacterCreationInterface.cpp'), /CharacterInspection::Restore\(\);\s*SKEE::FaceView::Restore\(\)/);
 });

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace RE { class GFxMovieView; class GFxValue; }
+namespace RE { class GFxMovie; class GFxMovieView; class GFxValue; }
 
 namespace SKEE::VR
 {
@@ -21,4 +21,7 @@ namespace SKEE::VR
 	// Default-off, bounded in-process observation. Exposes Begin/Record/Read/End
 	// through the existing CharGen Scaleform surface; never attaches a debugger.
 	void RegisterRaceSexMenuInputTrace(RE::GFxMovieView* a_view, RE::GFxValue* a_root);
+	// Uses the existing default-off 90-second/256-row trace; no additional sink.
+	void RecordExtensionTrace(RE::GFxMovie* movie, const char* boundary,
+		const char* provider, const char* control, double requested, double applied) noexcept;
 }

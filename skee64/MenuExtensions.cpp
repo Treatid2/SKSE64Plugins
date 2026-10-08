@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "MenuExtensions.h"
 #include "ScaleformUtils.h"
+#include "RaceSexMenuVRInput.h"
+#include "RaceSexMenuFaceView.h"
 #include <map>
 #include <mutex>
 #include <cmath>
@@ -111,6 +113,7 @@ namespace SKEE::MenuExtensions
                         { std::scoped_lock lock(service.mutex); auto it = service.sliders.find(key);
                           if (it == service.sliders.end() || value < it->second.minimum || value > it->second.maximum) return;
                           token = it->second.token; }
+                        VR::RecordExtensionTrace(args.movie, "extension_gfx_request", provider, id, value, FaceView::ViewYaw());
                         const auto* identity = args.movie; // comparison only; no delayed GFx dereference
                         if (auto* tasks = SKSE::GetTaskInterface()) tasks->AddTask([key, token, value, identity] {
                             auto* ui = RE::UI::GetSingleton();
@@ -124,6 +127,8 @@ namespace SKEE::MenuExtensions
                               // SetValue still publishes corrections/external edits.
                               it->second.value = value;
                               callback = it->second.callback; context = it->second.context; }
+                            VR::RecordExtensionTrace(menu->uiMovie.get(), "extension_game_callback",
+                                key.c_str(), "", value, FaceView::ViewYaw());
                             try { callback(value,context); } catch (...) { SKSE::log::warn("RaceMenu extension slider callback threw"); }
                         });
                     }

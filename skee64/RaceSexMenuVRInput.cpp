@@ -809,6 +809,18 @@ namespace
 
 namespace SKEE::VR
 {
+	void RecordExtensionTrace(RE::GFxMovie* movie, const char* boundary,
+		const char* provider, const char* control, double requested, double applied) noexcept
+	{
+		if (!g_traceRawEnabled.load(std::memory_order_relaxed)) return;
+		try {
+			std::scoped_lock guard{ g_traceMutex };
+			if (!TraceActive(movie)) return;
+			AppendTrace({{"boundary", boundary}, {"provider", std::string(provider).substr(0, 96)},
+				{"control", std::string(control).substr(0, 48)}, {"requestedValue", requested},
+				{"appliedNativeYaw", applied}});
+		} catch (...) { /* Observation must never change slider dispatch. */ }
+	}
 	void RegisterRaceSexMenuInputTrace(RE::GFxMovieView* a_view, RE::GFxValue* a_root)
 	{
 		static RE::GPtr<PolarPlacementFunction> polar{new PolarPlacementFunction{}};
@@ -1169,6 +1181,7 @@ namespace SKEE::VR
 
 namespace SKEE::VR
 {
+	void RecordExtensionTrace(RE::GFxMovie*, const char*, const char*, const char*, double, double) noexcept {}
 	void RegisterRaceSexMenuInputTrace(RE::GFxMovieView*, RE::GFxValue*) {}
 	void SetRaceSexMenuWorldTransform(float, float, bool) {}
 	bool ApplyRaceSexMenuWorldYaw() { return false; }
