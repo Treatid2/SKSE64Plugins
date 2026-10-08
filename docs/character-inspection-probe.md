@@ -1,6 +1,6 @@
 # VR character coordinate probe (candidate)
 
-This implements the explicitly offered **instrumentation-first** alternative to
+The original coordinate probe implements the explicitly offered **instrumentation-first** alternative to
 avatar-rotation controls. It adds no sliders and changes no scene transforms.
 Player view yaw remains the existing bounded tracking-origin adjustment. Avatar
 rotation needs a separately qualified owner/path; VR has no embedded flat-game
@@ -24,9 +24,11 @@ No automatic timer, collector, file writer or runtime transport is added.
 SKSE's `UI.Invoke*` functions discard the Scaleform return value. For transports
 that expose Papyrus but not a direct GFx invoke-return operation, use:
 
-1. `UI.Invoke("RaceSex Menu", "_root.CaptureVRCharacterInspection")`.
+1. `UI.InvokeIntA("RaceSex Menu", "_root.CaptureVRCharacterInspection")`,
+   with the optional typed integer array omitted (`None`), hence zero GFx arguments.
 2. After the queued main-thread task has run,
-   `UI.Invoke("RaceSex Menu", "_root.PublishVRCharacterInspection")`.
+   `UI.InvokeIntA("RaceSex Menu", "_root.PublishVRCharacterInspection")`,
+   again with no array/arguments supplied.
 3. `UI.GetString("RaceSex Menu", "_root.VRCharacterInspectionJSON")`.
 
 Publish serializes the same movie/session-validated native copy into a bounded
@@ -35,6 +37,11 @@ nodes. Its equivalent CharGen name is `PublishCharacterInspection`. A new movie
 initializes the string to `not-published`; serialization failure produces
 `readout-failed`, not an old successful payload. Node names are JSON-escaped,
 non-ASCII is escaped, and invalid UTF-8 is replaced.
+
+This zero-argument `InvokeIntA` route was verified through the selected DevBench
+Papyrus bridge. Do not substitute `InvokeInt(..., 0)`: that passes an extra GFx
+argument and violates the capture/publish contract. A transport's `called` status
+or discarded return alone does not prove the native function accepted the call.
 
 The string is a **transport copy**, not a continuously maintained live property.
 Invoke Publish immediately before every read, verify RaceSex Menu is still open,
@@ -67,6 +74,9 @@ read a different movie's capture. No queued callback retains scene-node pointers
   `localValid`/`worldValid` flags. Valid transforms include position `[x,y,z]`,
   uniform scale, and nine `rotationRowMajor` matrix entries. Do not infer an
   engine Euler convention or visual forward axis from the field name.
+- Present roles also report `fixedBound` and `worldBoundValid`. Finite,
+  nonnegative world spheres include copied center/radius; invalid values are
+  omitted. Radius zero is an engine empty bound, not a containing sphere.
 - `ancestorsSelfFirst` is bounded to 16 entries, including the node itself.
   `ancestryComplete` distinguishes complete chains from truncated/cyclic ones.
   `sharesTrackingOrigin: true` proves observed membership. `false` only proves
@@ -78,6 +88,36 @@ read a different movie's capture. No queued callback retains scene-node pointers
 This is one main-thread CPU observation, not an atomic renderer/GPU frame or
 proof of transform ownership. Comparing captures reveals relationships and
 changes; it does not by itself grant permission to overwrite a transform.
+
+## Explicit graph-bound preflight — native successor, 8 October
+
+The JSON transport additionally copies `controls.avatarBoundProbe`. It runs only
+on explicit main-thread capture, not on every menu update. Traversal retains the
+4096-node/64-depth limits and validated topology, frame, native dispatch and
+protected tracking/UI-node checks. Its diagnostic mode looks past fixed-bound
+flags to find the first *other* failure. Actual preview application/restoration
+still use strict fixed-bound rejection. The probe cannot change transforms,
+flags, scene bounds, slider values or the latched application refusal.
+
+`enumeratedNodeCount` includes queued but not necessarily validated nodes;
+`validatedNodeCount` defines sphere coverage. Partial graph observations are
+explicit and containment is null when coverage is incomplete. Fixed descendant
+details are capped at eight, with a truncation flag; parent-first ancestors are
+bounded by the depth limit. `geometryBoundsRoutineCount` identifies CB78C0,
+not necessarily skinned meshes. `composerSkipFlagBit9Count` records the raw bit
+that the inspected composer tests without borrowing an unqualified semantic name.
+
+The sampled full-turn envelope is a sphere about the avatar world pivot. Each
+positive sphere contributes distance-to-pivot plus radius. Empty spheres are
+ignored; invalid samples prevent complete coverage. Complete sampled envelopes
+are compared to each unchanged ancestor sphere with an explicit 0.01-world-unit
+margin. This conservative spherical estimate can overestimate the required yaw
+volume. It cannot account for stale skin spheres, geometry/AABB propagation or
+rendered culling. `rotationQualified` remains false even if containment succeeds.
+
+Engine evidence: the qualified C9DC10 parent-bound routine returns without bound
+writes when VR flag bit13 is set. That explains why a fixed ancestor need not
+automatically forbid child rotation, but does not qualify the remaining path.
 
 ## Next live evidence, after a separately authorised installation
 

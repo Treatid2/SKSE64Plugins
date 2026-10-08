@@ -25,6 +25,11 @@ commit after quiet, not a bound. If requests themselves reach a bound before
 movement, diagnose the renderer/input path rather than blaming view feedback.
 Do not claim release-only acceptance from this experiment.
 
+Subsequent human comparison corrected the endpoint interpretation: other sliders
+also select their absolute track limit when an endpoint is clicked. Do not treat
+that as a broken incremental arrow. View drag/pause and the inverted direction
+were reported good; physical release detection remains outside this trial.
+
 ## Diagnostic coverage
 
 The existing default-off 90-second, 256-row input trace records
@@ -40,6 +45,10 @@ node identity/name/depth/fixed-bound/vtable and qualified readable virtual targe
 and view trial pending/request/commit/cancel counts. All identities/counters are
 strings where precision matters. No live-node dereference is added to JSON readout.
 The rejection is also logged once per movie. Avatar safety guards stay unchanged.
+
+The next native-only successor adds the explicit graph-bound preflight described
+in [character-inspection-probe.md](character-inspection-probe.md). It looks beyond
+fixed-bound refusal for observation only; it does not enable avatar rotation.
 
 HUD suppression is excluded. The previous HUDMovieBaseInstance opacity experiment
 did not hide the human-observed marker; its presentation owner remains unknown.

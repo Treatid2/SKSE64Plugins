@@ -5,6 +5,7 @@
 #include "MenuExtensions.h"
 #include "RaceSexMenuVRInput.h"
 #include "ViewDirectionTrialPolicy.h"
+#include "AvatarBoundProbe.h"
 #include <chrono>
 #include <atomic>
 #include <algorithm>
@@ -49,8 +50,10 @@ namespace SKEE::FaceView
         struct InspectionNode
         {
             bool present{}, localValid{}, worldValid{}, ancestryComplete{}, sharesOrigin{};
+            bool boundValid{}, fixedBound{};
             std::string identity, parentIdentity, name;
             RE::NiTransform local{}, world{};
+            RE::NiBound worldBound{};
             std::array<std::string, 16> ancestors{};
             unsigned ancestorCount{};
         };
@@ -92,6 +95,10 @@ namespace SKEE::FaceView
             result.local = node->local; result.world = node->world;
             result.localValid = CameraPolicy::Valid(result.local);
             result.worldValid = CameraPolicy::Valid(result.world);
+            result.worldBound = node->worldBound;
+            result.boundValid = BoundProbe::Valid({{result.worldBound.center.x,
+                result.worldBound.center.y, result.worldBound.center.z}, result.worldBound.radius});
+            result.fixedBound = node->GetFlags().any(RE::NiAVObject::Flag::kFixedBound);
             auto* ancestor = node;
             while (ancestor && result.ancestorCount < result.ancestors.size()) {
                 result.ancestors[result.ancestorCount++] = NodeIdentity(ancestor);
@@ -224,6 +231,14 @@ namespace SKEE::FaceView
                     value.SetMember("name", RE::GFxValue{node.name.c_str()});
                     value.SetMember("localValid", RE::GFxValue{node.localValid});
                     value.SetMember("worldValid", RE::GFxValue{node.worldValid});
+                    value.SetMember("worldBoundValid", RE::GFxValue{node.boundValid});
+                    value.SetMember("fixedBound", RE::GFxValue{node.fixedBound});
+                    if (node.boundValid) {
+                        RE::GFxValue bound; movie->CreateObject(&bound);
+                        WritePoint(movie, bound, "center", node.worldBound.center);
+                        bound.SetMember("radius", RE::GFxValue{static_cast<double>(node.worldBound.radius)});
+                        value.SetMember("worldBound", bound);
+                    }
                     if (node.localValid) WriteTransform(movie, value, "local", node.local);
                     if (node.worldValid) WriteTransform(movie, value, "world", node.world);
                     value.SetMember("ancestryComplete", RE::GFxValue{node.ancestryComplete});
@@ -267,6 +282,9 @@ namespace SKEE::FaceView
                         value["identity"] = node.identity; value["parentIdentity"] = node.parentIdentity;
                         value["name"] = node.name;
                         value["localValid"] = node.localValid; value["worldValid"] = node.worldValid;
+                        value["worldBoundValid"] = node.boundValid; value["fixedBound"] = node.fixedBound;
+                        if (node.boundValid) value["worldBound"] = {
+                            {"center", InspectionPoint(node.worldBound.center)}, {"radius", node.worldBound.radius}};
                         if (node.localValid) value["local"] = InspectionTransform(node.local);
                         if (node.worldValid) value["world"] = InspectionTransform(node.world);
                         value["ancestryComplete"] = node.ancestryComplete;
@@ -718,24 +736,28 @@ namespace SKEE::CharacterInspection
             return std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
         }
-        bool Fail(const char* reason, RE::NiAVObject* object = nullptr, std::size_t depth = 0)
+        bool Fail(const char* reason, RE::NiAVObject* object = nullptr, std::size_t depth = 0,
+            nlohmann::json* diagnostic = nullptr)
         {
             // Record the first failing contract of this validation attempt.
             // Identity/virtual targets are strings, never lossy GFx numbers.
-            refusal = {{"reason", reason}, {"depth", depth}, {"objectPresent", object != nullptr}};
+            // A read-only preflight has its own result. Never overwrite the
+            // latched production refusal, even if later capture throws.
+            auto& failure = diagnostic ? *diagnostic : refusal;
+            failure = {{"reason", reason}, {"depth", depth}, {"objectPresent", object != nullptr}};
             if (object) {
                 std::ostringstream identity; identity << "0x" << std::hex << reinterpret_cast<std::uintptr_t>(object);
-                refusal["identity"] = identity.str();
-                refusal["name"] = std::string(object->name.c_str() ? object->name.c_str() : "").substr(0, 128);
-                refusal["fixedBound"] = object->GetFlags().any(RE::NiAVObject::Flag::kFixedBound);
+                failure["identity"] = identity.str();
+                failure["name"] = std::string(object->name.c_str() ? object->name.c_str() : "").substr(0, 128);
+                failure["fixedBound"] = object->GetFlags().any(RE::NiAVObject::Flag::kFixedBound);
                 const auto table = *reinterpret_cast<const std::uintptr_t*>(object);
                 std::ostringstream address; address << "0x" << std::hex << table;
-                refusal["vtable"] = address.str();
+                failure["vtable"] = address.str();
                 if (InRdata(table, 0x31*sizeof(std::uintptr_t))) {
                     const auto* targets = reinterpret_cast<const std::uintptr_t*>(table);
                     for (const auto slot : {0x26, 0x30}) {
                         std::ostringstream target; target << "0x" << std::hex << targets[slot];
-                        refusal[slot == 0x26 ? "composeTarget" : "boundsTarget"] = target.str();
+                        failure[slot == 0x26 ? "composeTarget" : "boundsTarget"] = target.str();
                     }
                 }
             }
@@ -745,6 +767,7 @@ namespace SKEE::CharacterInspection
         RE::NiPointer<RE::NiNode> parent;
         RE::NiMatrix3 nativeRotation{}, previewRotation{};
         struct Node { RE::NiPointer<RE::NiAVObject> object; std::size_t depth; };
+        struct GraphInspection { nlohmann::json failure; std::size_t validatedNodes{}; };
 
         bool SameRotation(const RE::NiMatrix3& a, const RE::NiMatrix3& b)
         {
@@ -767,13 +790,15 @@ namespace SKEE::CharacterInspection
             return address >= data.address() && address <= data.address()+data.size() &&
                 bytes <= data.address()+data.size()-address;
         }
-        bool Collect(RE::NiAVObject* root, std::vector<Node>& nodes, std::vector<RE::NiPointer<RE::NiNode>>& ancestors)
+        bool Collect(RE::NiAVObject* root, std::vector<Node>& nodes,
+            std::vector<RE::NiPointer<RE::NiNode>>& ancestors, GraphInspection* inspection = nullptr)
         {
-            if (!root) return Fail("missing-root");
+            auto* diagnostic = inspection ? &inspection->failure : nullptr;
+            if (!root) return Fail("missing-root", nullptr, 0, diagnostic);
 #if defined(ENABLE_SKYRIM_VR)
             auto* player = RE::PlayerCharacter::GetSingleton();
             auto* vr = player ? player->GetVRNodeData() : nullptr;
-            if (!REL::Module::IsVR() || !vr || !vr->RoomNode || !vr->HmdNode) return Fail("tracking-unavailable");
+            if (!REL::Module::IsVR() || !vr || !vr->RoomNode || !vr->HmdNode) return Fail("tracking-unavailable", nullptr, 0, diagnostic);
             const std::array<RE::NiAVObject*, 4> protectedNodes{
                 vr->RoomNode.get(), vr->HmdNode.get(), vr->uiNode.get(), vr->InWorldUIQuadGeo.get()};
 #else
@@ -785,11 +810,12 @@ namespace SKEE::CharacterInspection
             for (auto* p = root->parent; p; p = p->parent) {
                 const auto table = *reinterpret_cast<const std::uintptr_t*>(p);
                 if (ancestors.size() >= maxDepth || p == root || !seen.insert(p).second)
-                    return Fail("ancestor-cycle-or-depth", p, ancestors.size());
-                if (!InRdata(table, 0x31*sizeof(std::uintptr_t))) return Fail("ancestor-vtable", p, ancestors.size());
+                    return Fail("ancestor-cycle-or-depth", p, ancestors.size(), diagnostic);
+                if (!InRdata(table, 0x31*sizeof(std::uintptr_t))) return Fail("ancestor-vtable", p, ancestors.size(), diagnostic);
                 if (reinterpret_cast<const std::uintptr_t*>(table)[0x30] != base+0xC9DC10)
-                    return Fail("ancestor-bounds-target", p, ancestors.size());
-                if (p->GetFlags().any(RE::NiAVObject::Flag::kFixedBound)) return Fail("ancestor-fixed-bound", p, ancestors.size());
+                    return Fail("ancestor-bounds-target", p, ancestors.size(), diagnostic);
+                if (p->GetFlags().any(RE::NiAVObject::Flag::kFixedBound) && !inspection)
+                    return Fail("ancestor-fixed-bound", p, ancestors.size());
                 ancestors.emplace_back(p);
             }
             nodes.push_back({RE::NiPointer<RE::NiAVObject>{root}, 0}); seen.insert(root);
@@ -798,32 +824,123 @@ namespace SKEE::CharacterInspection
                 // Refuse a mod-altered hierarchy containing tracked/interactive
                 // nodes. Whole-avatar rotation must never rotate the headset,
                 // controllers' tracking origin, menu surface or pointer quad.
-                if (std::find(protectedNodes.begin(), protectedNodes.end(), object) != protectedNodes.end()) return Fail("protected-tracking-or-ui-node", object, depth);
+                if (std::find(protectedNodes.begin(), protectedNodes.end(), object) != protectedNodes.end()) return Fail("protected-tracking-or-ui-node", object, depth, diagnostic);
                 const auto table = *reinterpret_cast<const std::uintptr_t*>(object);
-                if (!InRdata(table, 0x31*sizeof(std::uintptr_t))) return Fail("object-vtable", object, depth);
-                if (!Frame(object->local)) return Fail("object-local-frame", object, depth);
-                if (!Frame(object->world)) return Fail("object-world-frame", object, depth);
+                if (!InRdata(table, 0x31*sizeof(std::uintptr_t))) return Fail("object-vtable", object, depth, diagnostic);
+                if (!Frame(object->local)) return Fail("object-local-frame", object, depth, diagnostic);
+                if (!Frame(object->world)) return Fail("object-world-frame", object, depth, diagnostic);
                 const auto* functions = reinterpret_cast<const std::uintptr_t*>(table);
                 // VR-only extra virtual at 0x26 is the pure transform pass.
                 // Bounds functions are the independently inspected node/geometry
                 // implementations, not UpdateWorldData's collision/controller path.
-                if (functions[0x26] != base+0xC9BCE0 && functions[0x26] != base+0xC9DEA0) return Fail("object-compose-target", object, depth);
-                if (functions[0x30] != base+0xC9DC10 && functions[0x30] != base+0xCB78C0 && functions[0x30] != base+0xC9C700) return Fail("object-bounds-target", object, depth);
-                if (object->GetFlags().any(RE::NiAVObject::Flag::kFixedBound)) return Fail("object-fixed-bound", object, depth);
+                if (functions[0x26] != base+0xC9BCE0 && functions[0x26] != base+0xC9DEA0) return Fail("object-compose-target", object, depth, diagnostic);
+                if (functions[0x30] != base+0xC9DC10 && functions[0x30] != base+0xCB78C0 && functions[0x30] != base+0xC9C700) return Fail("object-bounds-target", object, depth, diagnostic);
+                if (object->GetFlags().any(RE::NiAVObject::Flag::kFixedBound) && !inspection)
+                    return Fail("object-fixed-bound", object, depth);
                 if (auto* node = object->AsNode()) {
                     auto& children = node->GetChildren();
                     if (children.capacity() > maxNodes || children.free_idx() > children.capacity() ||
-                        children.size() > children.free_idx()) return Fail("child-array-contract", object, depth);
+                        children.size() > children.free_idx()) return Fail("child-array-contract", object, depth, diagnostic);
                     for (std::size_t j = 0; j < children.free_idx(); ++j) {
                         auto* child = children[static_cast<std::uint16_t>(j)].get();
                         if (!child) continue;
-                        if (child->parent != node) return Fail("child-parent-mismatch", child, depth+1);
-                        if (depth+1 > maxDepth || nodes.size() >= maxNodes || !seen.insert(child).second) return Fail("child-cycle-or-limit", child, depth+1);
+                        if (child->parent != node) return Fail("child-parent-mismatch", child, depth+1, diagnostic);
+                        if (depth+1 > maxDepth || nodes.size() >= maxNodes || !seen.insert(child).second) return Fail("child-cycle-or-limit", child, depth+1, diagnostic);
                         nodes.push_back({RE::NiPointer<RE::NiAVObject>{child}, depth+1});
                     }
                 }
+                if (inspection) inspection->validatedNodes = i+1;
             }
             return true;
+        }
+        BoundProbe::Sphere WorldSphere(const RE::NiAVObject* object)
+        {
+            const auto& b = object->worldBound;
+            return {{b.center.x, b.center.y, b.center.z}, b.radius};
+        }
+        nlohmann::json BoundObservation(const RE::NiAVObject* object)
+        {
+            const auto sphere = WorldSphere(object);
+            std::ostringstream identity; identity << "0x" << std::hex << reinterpret_cast<std::uintptr_t>(object);
+            nlohmann::json result{{"identity", identity.str()},
+                {"name", std::string(object->name.c_str() ? object->name.c_str() : "").substr(0, 128)},
+                {"fixedBound", object->GetFlags().any(RE::NiAVObject::Flag::kFixedBound)},
+                {"worldBoundValid", BoundProbe::Valid(sphere)}};
+            if (BoundProbe::Valid(sphere)) result["worldBound"] = {
+                {"center", sphere.center}, {"radius", sphere.radius}};
+            return result;
+        }
+        RE::NiAVObject* LiveAvatar();
+        nlohmann::json InspectGraphBounds()
+        {
+            // Called only by the explicit main-thread capture, never per frame.
+            // Collect's read-only mode bypasses fixed-bound rejection only; it
+            // cannot call Propagate/ApplyPreview or change the active refusal.
+            nlohmann::json result{{"mode", "read-only-sampled-spheres"},
+                {"rotationQualified", false}, {"fixedBoundGuardRelaxedForApplication", false}};
+            if (!installed) { result["state"] = "hook-unavailable"; return result; }
+            auto* root = LiveAvatar();
+            GraphInspection inspection;
+            std::vector<Node> nodes;
+            std::vector<RE::NiPointer<RE::NiNode>> ancestors;
+            bool complete = false;
+            if (!root) Fail("missing-avatar", nullptr, 0, &inspection.failure);
+            else if (!root->parent) Fail("missing-avatar-parent", root, 0, &inspection.failure);
+            else if (!Frame(root->parent->world)) Fail("avatar-parent-frame", root->parent, 0, &inspection.failure);
+            else complete = Collect(root, nodes, ancestors, &inspection);
+            result["state"] = complete ? "graph-contracts-inspected" : "partial";
+            result["graphCompleteIgnoringFixedBound"] = complete;
+            result["firstOtherFailure"] = inspection.failure;
+            result["enumeratedNodeCount"] = nodes.size();
+            result["validatedNodeCount"] = inspection.validatedNodes;
+            result["sphereCoverage"] = "validated-nodes-only";
+            result["ancestorChainComplete"] = !nodes.empty();
+            result["ancestorCount"] = ancestors.size();
+            BoundProbe::Sphere envelope;
+            if (root) envelope.center = {root->world.translate.x, root->world.translate.y, root->world.translate.z};
+            std::size_t empty = 0, invalid = 0, positive = 0, fixed = 0, geometry = 0, skipCompose = 0;
+            auto fixedObjects = nlohmann::json::array();
+            const auto base = REL::Module::get().base();
+            for (std::size_t i = 0; i < inspection.validatedNodes; ++i) {
+                auto* object = nodes[i].object.get();
+                const auto sphere = WorldSphere(object);
+                if (!BoundProbe::Valid(sphere) || !BoundProbe::Include(envelope, sphere)) ++invalid;
+                else if (sphere.radius == 0) ++empty;
+                else ++positive;
+                if (object->GetFlags().any(RE::NiAVObject::Flag::kFixedBound)) {
+                    ++fixed;
+                    if (fixedObjects.size() < 8) fixedObjects.push_back(BoundObservation(object));
+                }
+                // Exact CB78C0 can copy skin-owned bounds; this count is not
+                // proof that a particular geometry has a skin instance.
+                if ((*reinterpret_cast<const std::uintptr_t* const*>(object))[0x30] == base+0xCB78C0) ++geometry;
+                // C9BCE0 skips composing world data when this raw bit is set.
+                // Do not infer semantics from CommonLib's borrowed flag name.
+                if (object->GetFlags().any(static_cast<RE::NiAVObject::Flag>(1u<<9))) ++skipCompose;
+            }
+            const bool envelopeComplete = complete && invalid == 0 && positive > 0 && BoundProbe::Valid(envelope);
+            result["positiveSphereCount"] = positive; result["emptySphereCount"] = empty;
+            result["invalidSphereCount"] = invalid; result["fixedObjectCount"] = fixed;
+            result["firstFixedObjects"] = std::move(fixedObjects);
+            result["fixedObjectsTruncated"] = fixed > 8;
+            result["geometryBoundsRoutineCount"] = geometry;
+            result["composerSkipFlagBit9Count"] = skipCompose;
+            result["sampledEnvelopeComplete"] = envelopeComplete;
+            if (positive > 0 && BoundProbe::Valid(envelope)) result["sampledFullTurnEnvelope"] = {
+                {"center", envelope.center}, {"radius", envelope.radius}};
+            constexpr double margin = 0.01; // world units; explicit observation, not a safety permit
+            result["containmentMarginWorldUnits"] = margin;
+            auto containers = nlohmann::json::array();
+            for (const auto& ancestor : ancestors) {
+                auto value = BoundObservation(ancestor.get());
+                if (envelopeComplete && BoundProbe::Valid(WorldSphere(ancestor.get())))
+                    value["containsSampledFullTurnEnvelope"] = BoundProbe::Contains(WorldSphere(ancestor.get()), envelope, margin);
+                else value["containsSampledFullTurnEnvelope"] = nullptr;
+                containers.push_back(std::move(value));
+            }
+            result["ancestorsParentFirst"] = std::move(containers);
+            result["limitations"] = "Sampled spheres may be stale; skin-owned sphere/AABB and rendered geometry propagation remain unqualified.";
+            return result;
         }
         void Propagate(const std::vector<Node>& nodes, const std::vector<RE::NiPointer<RE::NiNode>>& ancestors)
         {
@@ -1016,6 +1133,7 @@ namespace SKEE::CharacterInspection
     {
         return {{"avatarRequestedYaw", requestedYaw}, {"avatarAppliedYaw", appliedYaw},
             {"avatarRejected", rejected}, {"avatarRefusal", refusal},
+            {"avatarBoundProbe", InspectGraphBounds()},
             {"viewTrial", {{"mode", "quiet-window-not-release"}, {"quietMilliseconds", ViewDirectionTrial::quietMilliseconds},
                 {"pending", viewTrial.pending}, {"requestedDisplayYaw", viewTrial.requested},
                 {"appliedNativeYaw", FaceView::ViewYaw()}, {"displayYaw", -FaceView::ViewYaw()},
