@@ -779,6 +779,9 @@ namespace SKEE::CharacterInspection
             std::size_t depth{};
         };
         std::vector<TrialNode> trialNodes;
+        RE::NiTransform trialParentWorld{};
+        RE::NiMatrix3 trialYaw{};
+        RE::NiPoint3 trialPivot{};
         // Copied diagnostic values only: no retained node references, JSON/string
         // allocations or native callbacks in the restoration observation path.
         struct TrialConflict
@@ -794,7 +797,9 @@ namespace SKEE::CharacterInspection
         struct TrialRestoreReport
         {
             const char* outcome{"not-attempted"};
+            const char* removalPreflight{"not-attempted"};
             std::size_t nodesExamined{}, conflictingNodes{}, sampleCount{};
+            std::size_t animatedWorldsUnturned{}, animatedBoundsUnturned{};
             std::array<std::size_t, 6> fieldCounts{}; // parent, rotation, position, scale, center, radius
             std::array<TrialConflict, 8> samples{};
             std::uintptr_t root{}, liveRoot{}, expectedParent{}, currentParent{};
@@ -1085,6 +1090,71 @@ namespace SKEE::CharacterInspection
             sample.boundMatchesNative = SamePoint(object->worldBound.center, node.nativeBound.center) &&
                 object->worldBound.radius == node.nativeBound.radius;
         }
+        bool PlanTrialRemoval(std::vector<TrialNode>& planned)
+        {
+            // Root/parent stability witnesses the preview basis, but cannot prove
+            // an external writer's convention. Inverse-current-pose removal is
+            // an explicit UNSAFE trial assumption, not general scene ownership.
+            auto refuse = [](const char* reason) { trialRestoreReport.removalPreflight = reason; return false; };
+            if (trialNodes.empty() || trialNodes.front().object.get() != avatar.get()) return refuse("root-identity");
+            if (!SameRotation(avatar->local.rotate, previewRotation)) return refuse("root-local-rotation");
+            if (!SameWorld(avatar->world, trialNodes.front().trialWorld)) return refuse("root-world-frame");
+            if (!SameWorld(parent->world, trialParentWorld)) return refuse("parent-world-frame");
+            ProtectedNodes protectedNodes{};
+            if (!TrackingNodes(protectedNodes)) return refuse("tracking-unavailable");
+            std::unordered_set<RE::NiAVObject*> members, childrenSeen;
+            for (const auto& node : trialNodes) members.insert(node.object.get());
+            const auto inverse = trialYaw.Transpose();
+            planned.reserve(trialNodes.size());
+            for (const auto& node : trialNodes) {
+                auto* object = node.object.get();
+                if (object->parent != node.parentIdentity ||
+                    std::find(protectedNodes.begin(), protectedNodes.end(), object) != protectedNodes.end() ||
+                    !InRdata(*reinterpret_cast<const std::uintptr_t*>(object), 0x31*sizeof(std::uintptr_t)) ||
+                    !Frame(object->local) || !Frame(object->world) || !BoundProbe::Valid(WorldSphere(object)) ||
+                    std::abs(object->world.scale-node.trialWorld.scale) > 0.0001F) return refuse("node-contract-or-scale");
+                if (auto* branch = object->AsNode()) {
+                    auto& children = branch->GetChildren();
+                    if (children.capacity() > maxNodes || children.free_idx() > children.capacity() ||
+                        children.size() > children.free_idx()) return refuse("child-array-contract");
+                    for (std::size_t j = 0; j < children.free_idx(); ++j) {
+                        auto* child = children[static_cast<std::uint16_t>(j)].get();
+                        if (!child) continue;
+                        if (!members.count(child) || child == avatar.get() || child->parent != branch ||
+                            !childrenSeen.insert(child).second) return refuse("child-topology");
+                    }
+                }
+                auto copy = node;
+                // Exact copied poses avoid accumulated round-off. A recognisable
+                // already-native pose is left alone. Otherwise retain animation
+                // by inverse-turning CURRENT values, never replaying stale ones.
+                if (SameWorld(object->world, node.trialWorld)) copy.nativeWorld = node.nativeWorld;
+                else if (SameWorld(object->world, node.nativeWorld)) copy.nativeWorld = object->world;
+                else {
+                    copy.nativeWorld = object->world;
+                    copy.nativeWorld.rotate = inverse*object->world.rotate;
+                    copy.nativeWorld.translate = trialPivot+inverse*(object->world.translate-trialPivot);
+                    ++trialRestoreReport.animatedWorldsUnturned;
+                }
+                const auto& bound = object->worldBound;
+                if (SamePoint(bound.center, node.trialBound.center) && bound.radius == node.trialBound.radius)
+                    copy.nativeBound = node.nativeBound;
+                else if (SamePoint(bound.center, node.nativeBound.center) && bound.radius == node.nativeBound.radius)
+                    copy.nativeBound = bound;
+                else {
+                    copy.nativeBound = bound;
+                    if (bound.radius > 0) copy.nativeBound.center = trialPivot+inverse*(bound.center-trialPivot);
+                    ++trialRestoreReport.animatedBoundsUnturned;
+                }
+                if (!Frame(copy.nativeWorld) || !CameraPolicy::Finite(copy.nativeBound.center)) return refuse("inverse-result-frame");
+                planned.push_back(std::move(copy));
+            }
+            // Check the whole original topology before ANY inverse write, including
+            // additions/removals with otherwise unchanged surviving parent links.
+            if (childrenSeen.size()+1 != members.size()) return refuse("subtree-membership");
+            trialRestoreReport.removalPreflight = "accepted-unqualified-basis-assumption";
+            return true;
+        }
         bool RemoveTrialPreview()
         {
             // Strong references keep the copied branch alive, but never replay a
@@ -1105,22 +1175,32 @@ namespace SKEE::CharacterInspection
                 report.currentLocal = avatar->local.rotate;
                 report.rootLocalChanged = !SameRotation(avatar->local.rotate, previewRotation);
                 report.rootLocalMatchesNative = SameRotation(avatar->local.rotate, nativeRotation);
-                if (SameRotation(avatar->local.rotate, previewRotation)) avatar->local.rotate = nativeRotation;
-                else owned = false;
                 std::size_t index = 0;
-                for (const auto& node : trialNodes) {
-                    auto* object = node.object.get();
-                    ObserveTrialNode(node, index++); // copy before restoring this node's fields
-                    if (object->parent != node.parentIdentity) { owned = false; continue; }
-                    // Restore only values that still match OUR copied preview.
-                    // Foreign animation/renderer writes are not overwritten.
-                    if (SameWorld(object->world, node.trialWorld)) object->world = node.nativeWorld;
-                    else owned = false;
-                    if (SamePoint(object->worldBound.center, node.trialBound.center) &&
-                        object->worldBound.radius == node.trialBound.radius) object->worldBound = node.nativeBound;
-                    else owned = false;
+                for (const auto& node : trialNodes) ObserveTrialNode(node, index++);
+                std::vector<TrialNode> planned;
+                owned = PlanTrialRemoval(planned);
+                if (owned) {
+                    avatar->local.rotate = nativeRotation;
+                    for (const auto& node : planned) {
+                        node.object->world = node.nativeWorld;
+                        node.object->worldBound = node.nativeBound;
+                    }
+                    report.outcome = "removed-yaw-current-pose-assumption";
+                } else {
+                    // Refusal recovery remains conservative: restore only copied
+                    // fields still matching our writes, never inverse ambiguous
+                    // state after a failed whole-branch preflight.
+                    report.animatedWorldsUnturned = report.animatedBoundsUnturned = 0;
+                    if (SameRotation(avatar->local.rotate, previewRotation)) avatar->local.rotate = nativeRotation;
+                    for (const auto& node : trialNodes) {
+                        auto* object = node.object.get();
+                        if (object->parent != node.parentIdentity) continue;
+                        if (SameWorld(object->world, node.trialWorld)) object->world = node.nativeWorld;
+                        if (SamePoint(object->worldBound.center, node.trialBound.center) &&
+                            object->worldBound.radius == node.trialBound.radius) object->worldBound = node.nativeBound;
+                    }
+                    report.outcome = "basis-or-topology-conflict";
                 }
-                report.outcome = owned ? "restored-owned-values" : "field-conflict";
             }
             // Replacement roots need no writes: the obsolete branch is discarded.
             else if (avatar.get() == live) { owned = false; report.outcome = "root-parent-conflict"; }
@@ -1198,6 +1278,8 @@ namespace SKEE::CharacterInspection
             }
             // Complete bounded preflight and allocation BEFORE the first write.
             trialNodes = std::move(planned);
+            trialParentWorld = root->parent->world;
+            trialYaw = yaw; trialPivot = pivot;
             trialAppliedAt = NowMilliseconds();
             avatar.reset(root); parent.reset(root->parent);
             nativeRotation = root->local.rotate; previewRotation = nextLocal.rotate;
@@ -1445,12 +1527,16 @@ namespace SKEE::CharacterInspection
                     {"previewBound", TrialBound(s.previewBound)}, {"currentBound", TrialBound(s.currentBound)}});
             }
             nlohmann::json result{{"outcome", report.outcome}, {"appliedYaw", report.appliedYaw},
+                {"removalPreflight", report.removalPreflight},
                 {"intervalMilliseconds", std::to_string(report.intervalMilliseconds)},
                 {"root", TrialIdentity(report.root)}, {"liveRoot", TrialIdentity(report.liveRoot)},
                 {"expectedParent", TrialIdentity(report.expectedParent)}, {"currentParent", TrialIdentity(report.currentParent)},
                 {"rootLocalObserved", report.rootLocalObserved}, {"rootLocalChanged", report.rootLocalChanged},
                 {"rootLocalMatchesNative", report.rootLocalMatchesNative}, {"nodesExamined", report.nodesExamined},
                 {"conflictingNodes", report.conflictingNodes}, {"samplesTruncated", report.conflictingNodes > report.sampleCount},
+                {"animatedWorldsUnturned", report.animatedWorldsUnturned},
+                {"animatedBoundsUnturned", report.animatedBoundsUnturned},
+                {"externalWriterBasisQualified", false},
                 {"fieldCounts", {{"parent", report.fieldCounts[0]}, {"worldRotation", report.fieldCounts[1]},
                     {"worldPosition", report.fieldCounts[2]}, {"worldScale", report.fieldCounts[3]},
                     {"boundCenter", report.fieldCounts[4]}, {"boundRadius", report.fieldCounts[5]}}},
@@ -1468,7 +1554,7 @@ namespace SKEE::CharacterInspection
         return {{"avatarRequestedYaw", requestedYaw}, {"avatarAppliedYaw", appliedYaw},
             {"avatarRejected", rejected}, {"avatarRefusal", refusal},
             {"avatarBoundProbe", InspectGraphBounds()},
-            {"unsafeAvatarTrial", {{"enabled", unsafeTrialEnabled}, {"mode", "rigid-world-preview-no-native-refit"},
+            {"unsafeAvatarTrial", {{"enabled", unsafeTrialEnabled}, {"mode", "rigid-world-preview-inverse-current-pose-assumption"},
                 {"applications", std::to_string(unsafeTrialApplications)}, {"restoreConflicts", std::to_string(unsafeTrialRestoreConflicts)},
                 {"ownedNodeCount", trialNodes.size()}, {"ancestorRefit", false}, {"rotationQualified", false},
                 {"lastRestore", TrialRestoreObservation()},

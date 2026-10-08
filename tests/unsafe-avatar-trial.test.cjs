@@ -39,7 +39,7 @@ test('trial validates a whole bounded avatar-only subtree before writing and cal
   assert.match(apply, /pivot\+yaw\*\(copy.nativeWorld.translate-pivot\)/);
   assert.doesNotMatch(apply, /->local.translate\s*=|->local.scale\s*=|->parent->(?:world|local|worldBound)\s*=/);
 });
-test('trial restores copied owned values before the native update and never clobbers replacement/foreign state', () => {
+test('trial stages inverse-current-pose removal before writes and keeps conservative refusal recovery', () => {
   assert.match(body('RemovePreview'), /if \(!trialNodes.empty\(\)\) return RemoveTrialPreview\(\)/);
   const remove=body('RemoveTrialPreview');
   assert.match(remove, /auto\* live = LiveAvatar\(\)/);
@@ -51,6 +51,9 @@ test('trial restores copied owned values before the native update and never clob
   assert.match(remove, /SameRotation\(avatar->local.rotate, previewRotation\)/);
   assert.match(remove, /unsafeTrialRestoreConflicts/);
   assert.match(remove, /trialNodes.clear\(\)/);
+  assert.ok(remove.indexOf('owned = PlanTrialRemoval(planned)') < remove.indexOf('avatar->local.rotate = nativeRotation'));
+  assert.match(remove, /for \(const auto& node : planned\)/);
+  assert.match(remove, /basis-or-topology-conflict/);
   const hook=body('ProcessHook');
   assert.ok(hook.indexOf('RemovePreview(false)')<hook.indexOf('original(menu, message)'));
   assert.equal((hook.match(/original\(menu, message\)/g)||[]).length,1);
@@ -69,7 +72,7 @@ test('restore observations are bounded copied values and do not add scene writes
   assert.doesNotMatch(observe, /object->(?:world|worldBound|local|parent)\s*=|object->parent->|push_back|new\s|nlohmann|SceneFunction|Propagate\(|->Update\(/);
   const remove=body('RemoveTrialPreview');
   assert.ok(remove.indexOf('report.currentLocal = avatar->local.rotate') < remove.indexOf('avatar->local.rotate = nativeRotation'));
-  assert.ok(remove.indexOf('ObserveTrialNode(node, index++)') < remove.indexOf('object->world = node.nativeWorld'));
+  assert.ok(remove.indexOf('ObserveTrialNode(node, index++)') < remove.indexOf('owned = PlanTrialRemoval(planned)'));
   assert.match(remove, /discarded-replaced-root/);
   assert.match(remove, /root-parent-conflict/);
   assert.match(body('Restore'), /trialRestoreReport = \{\}; trialAppliedAt = 0/);
@@ -111,7 +114,47 @@ test('rigid-preview reference turns positions and positive sphere centers about 
     assert.ok(distance(restored,sample)<1e-9);
     assert.deepEqual(turn(pivot,pivot,a),pivot);
   }
-  // Foreign writes fail the copied-preview ownership check; never assert safety.
-  const restore=(now,preview,baseline)=>now===preview?baseline:now;
-  assert.equal(restore(13,13,0),0); assert.equal(restore(14,13,0),14);
+});
+
+test('inverse removal preserves animated poses rather than replaying stale snapshots (independent reference)', () => {
+  const turn=(v,p,a)=>{const [x,y,z]=v.map((n,i)=>n-p[i]);return[p[0]+Math.cos(a)*x-Math.sin(a)*y,p[1]+Math.sin(a)*x+Math.cos(a)*y,p[2]+z];};
+  const pivot=[2337,2381,114], stale=[2300,2400,234], animated=[2302,2397,235];
+  const near=(a,b)=>a.every((v,i)=>Math.abs(v-b[i])<1e-8);
+  for (const deg of [-180,-90,-21,0,21,90,180]) {
+    const yaw=deg*Math.PI/180;
+    let pose=[...animated], orientation=0.123;
+    for(let cycle=0;cycle<1000;cycle++) {
+      pose=turn(turn(pose,pivot,yaw),pivot,-yaw);
+      orientation=(orientation+yaw)-yaw;
+    }
+    assert.ok(near(pose,animated)); assert.ok(!near(pose,stale));
+    assert.ok(Math.abs(orientation-0.123)<1e-12);
+  }
+  // If a writer instead supplies an unrecognisable NATIVE pose, this trial's
+  // preview-basis assumption gives the wrong answer. Keep that limitation explicit.
+  assert.ok(!near(turn(animated,pivot,-21*Math.PI/180),animated));
+});
+
+test('inverse plan requires stable basis and exact complete topology without relaxing strict mode', () => {
+  const plan=body('PlanTrialRemoval');
+  for(const guard of ['SameRotation(avatar->local.rotate, previewRotation)',
+    'SameWorld(avatar->world, trialNodes.front().trialWorld)', 'SameWorld(parent->world, trialParentWorld)',
+    'object->parent != node.parentIdentity', '!members.count(child)', '!childrenSeen.insert(child).second',
+    'childrenSeen.size()+1 != members.size()', '!Frame(object->local)', '!Frame(object->world)',
+    '!BoundProbe::Valid(WorldSphere(object))']) assert.ok(plan.includes(guard),guard);
+  assert.match(plan, /inverse\*object->world.rotate/);
+  assert.match(plan, /trialPivot\+inverse\*\(object->world.translate-trialPivot\)/);
+  assert.match(plan, /copy.nativeWorld = object->world/);
+  assert.match(plan, /copy.nativeBound = bound/);
+  assert.match(plan, /bound.radius > 0/);
+  assert.doesNotMatch(plan, /object->(?:world|worldBound|local|parent)\s*=|avatar->local.rotate\s*=|Propagate\(|SceneFunction|->Update\(/);
+  assert.match(source, /"externalWriterBasisQualified", false/);
+  // Independent edge-identity reference, not execution of the native traversal.
+  const topology=(members,edges)=>edges.length===members.length-1 &&
+    new Set(edges.map(e=>e[1])).size===edges.length &&
+    edges.every(e=>members.includes(e[0]) && members.includes(e[1]) && e[1]!==members[0]);
+  assert.ok(topology(['root','a','b'],[['root','a'],['a','b']]));
+  assert.ok(!topology(['root','a','b'],[['root','a']]));
+  assert.ok(!topology(['root','a'],[['root','a'],['root','new']]));
+  assert.ok(!topology(['root','a','b'],[['root','a'],['root','a']]));
 });

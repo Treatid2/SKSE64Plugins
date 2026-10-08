@@ -14,12 +14,26 @@ refit routine. CamSpin and fixed-bound qualification are intentionally bypassed
 for this copied-world-pose experiment only. Skinning, shader caches, special
 camera nodes and ancestor culling may still be wrong; a crash is possible.
 
-Before each native menu update or close, restore only fields matching the copied
-preview on the same branch/parents. Do not overwrite foreign engine/mod writes or
-apply old values to a replacement race/sex root. Restoration conflicts latch a
-refusal and are logged; this is not a guaranteed recovery path after arbitrary
-external writes or a crash. All planned copies are allocated/validated before
-the first trial write. No broad animation/collision update is forced.
+Before each native menu update or close, remove the yaw on the same branch.
+The entire removal plan is validated before inverse writes: root-local and
+root-world preview, unchanged parent world frame, exact original child topology,
+finite valid transforms/spheres and unchanged world scale. Matching preview
+snapshots restore exactly; recognisable original snapshots are left alone.
+Other current descendant poses and positive sphere centers are inverse-turned,
+preserving current animation instead of replaying stale snapshots. Non-root
+local animation poses and current sphere radii remain untouched.
+
+This **assumes changed descendant world values still use the preview basis**.
+The root witnesses do not prove an external writer's convention. An independently
+rewritten native-basis pose that does not match its old snapshot can therefore
+be inverse-turned incorrectly. `externalWriterBasisQualified:false` explicitly
+records that unresolved risk; this remains a default-off, unsafe experiment.
+No wider epsilon or unqualified engine update has been used to conceal it.
+
+If the preflight fails, only still-matching copied fields on unchanged parents
+are restored; no inverse plan is applied. The refusal latches. Replacement roots
+are discarded without writes. This is not guaranteed recovery after arbitrary
+external writes or a crash. No broad animation/collision update is forced.
 
 For a live test start with a small angle (e.g. 10–15 degrees), inspect body, hair
 and shadows, then return yaw to 0 and disable the trial before closing. Test
@@ -62,4 +76,20 @@ It remains available after a refusal and is cleared when menu state is restored
 on close/reinitialization. The fixed storage and source-contract/reference checks
 bound diagnostic growth, but do not prove the native capture's actual size or
 runtime correctness. No new update/refit target, guard bypass or animation-state
-overwrite is introduced by this instrumentation.
+overwrite was introduced by that instrumentation alone.
+
+## Animation-preserving removal trial
+
+The 3f075ff observation had one 21-degree application followed by refusal:
+root-local still matched the preview, but 31 of 351 descendant world rotations
+changed (16 positions also changed), with no parent, scale or bound changes.
+The first eight samples were MOV weapon attachment nodes. This is consistent
+with animation/attachment updates, not proof of their writer or coordinate basis.
+
+The next trial replaces descendant snapshot equality as the success condition
+with the guarded inverse-current-pose policy above. Existing mismatch counts and
+samples remain observations, even on successful removal. The new
+`animatedWorldsUnturned` and `animatedBoundsUnturned` counts describe the accepted
+inverse paths, not a finding that those values were authored by animation.
+On refusal these counts are zero because the staged inverse plan was not applied.
+The outcome `removed-yaw-current-pose-assumption` is deliberately not a safety claim.
