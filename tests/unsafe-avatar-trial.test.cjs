@@ -42,7 +42,8 @@ test('trial validates a whole bounded avatar-only subtree before writing and cal
 test('trial restores copied owned values before the native update and never clobbers replacement/foreign state', () => {
   assert.match(body('RemovePreview'), /if \(!trialNodes.empty\(\)\) return RemoveTrialPreview\(\)/);
   const remove=body('RemoveTrialPreview');
-  assert.match(remove, /avatar.get\(\) == LiveAvatar\(\).*avatar->parent == parent.get\(\)/);
+  assert.match(remove, /auto\* live = LiveAvatar\(\)/);
+  assert.match(remove, /avatar.get\(\) == live && avatar && avatar->parent == parent.get\(\)/);
   assert.match(remove, /object->parent != node.parentIdentity/);
   assert.match(remove, /SameWorld\(object->world, node.trialWorld\)\) object->world = node.nativeWorld/);
   assert.match(remove, /SamePoint\(object->worldBound.center, node.trialBound.center\)/);
@@ -54,6 +55,51 @@ test('trial restores copied owned values before the native update and never clob
   assert.ok(hook.indexOf('RemovePreview(false)')<hook.indexOf('original(menu, message)'));
   assert.equal((hook.match(/original\(menu, message\)/g)||[]).length,1);
   assert.match(hook, /if \(close\) Restore\(\)/);
+});
+
+test('restore observations are bounded copied values and do not add scene writes or callbacks', () => {
+  assert.match(source, /std::array<TrialConflict, 8> samples/);
+  assert.match(source, /std::array<char, 129> name/);
+  const observe=body('ObserveTrialNode');
+  assert.ok(observe.indexOf('++report.conflictingNodes') < observe.indexOf('report.sampleCount == report.samples.size()'));
+  assert.ok(observe.indexOf('report.fieldCounts[i]') < observe.indexOf('report.sampleCount == report.samples.size()'));
+  assert.match(observe, /i\+1 < sample.name.size\(\) && name\[i\]/);
+  assert.match(observe, /sample.currentWorld = object->world/);
+  assert.match(observe, /sample.currentBound = object->worldBound/);
+  assert.doesNotMatch(observe, /object->(?:world|worldBound|local|parent)\s*=|object->parent->|push_back|new\s|nlohmann|SceneFunction|Propagate\(|->Update\(/);
+  const remove=body('RemoveTrialPreview');
+  assert.ok(remove.indexOf('report.currentLocal = avatar->local.rotate') < remove.indexOf('avatar->local.rotate = nativeRotation'));
+  assert.ok(remove.indexOf('ObserveTrialNode(node, index++)') < remove.indexOf('object->world = node.nativeWorld'));
+  assert.match(remove, /discarded-replaced-root/);
+  assert.match(remove, /root-parent-conflict/);
+  assert.match(body('Restore'), /trialRestoreReport = \{\}; trialAppliedAt = 0/);
+  assert.match(source, /"lastRestore", TrialRestoreObservation\(\)/);
+  assert.match(source, /"writerIdentified", false/);
+});
+
+test('independent conflict-count reference keeps totals beyond its eight retained samples', () => {
+  // Reference for the bounded sampling contract, not execution of ObserveTrialNode.
+  const counts=Array(6).fill(0), samples=[];
+  for(let i=0;i<4096;i++) {
+    const changed=[i===0,true,i%2===0,false,i%3===0,false];
+    changed.forEach((flag,j)=>{if(flag)counts[j]++;});
+    if(samples.length<8)samples.push({index:i,changed});
+  }
+  assert.equal(samples.length,8);
+  assert.deepEqual(counts,[1,4096,2048,0,1366,0]);
+  // Worst-case escaped names and float spellings remain bounded independently
+  // of subtree size; reserve 32 KiB for the surrounding existing capture.
+  const scalar=-3.4028234663852886e38;
+  const world={position:Array(3).fill(scalar),rotationRowMajor:Array(9).fill(scalar),scale:scalar,validFrame:false};
+  const bound={center:Array(3).fill(scalar),radius:scalar};
+  const sample={identity:'0xffffffffffffffff',name:'\u0001'.repeat(128),index:4095,depth:128,
+    expectedParent:'0xffffffffffffffff',currentParent:'0xffffffffffffffff',
+    changed:{parent:true,worldRotation:true,worldPosition:true,worldScale:true,boundCenter:true,boundRadius:true},
+    worldMatchesNative:false,boundMatchesNative:false,
+    nativeWorld:world,previewWorld:world,currentWorld:world,nativeBound:bound,previewBound:bound,currentBound:bound};
+  const size=Buffer.byteLength(JSON.stringify({samples:Array(8).fill(sample),fieldCounts:counts,
+    nativeRootLocalRotation:world.rotationRowMajor,previewRootLocalRotation:world.rotationRowMajor,currentRootLocalRotation:world.rotationRowMajor}));
+  assert.ok(size+32768<65536,`reference sample bytes ${size}`);
 });
 test('rigid-preview reference turns positions and positive sphere centers about the root without scale/pivot drift', () => {
   const turn=(v,p,a)=>{const [x,y,z]=v.map((n,i)=>n-p[i]);return[p[0]+Math.cos(a)*x-Math.sin(a)*y,p[1]+Math.sin(a)*x+Math.cos(a)*y,p[2]+z];};

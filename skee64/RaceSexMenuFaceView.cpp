@@ -776,8 +776,35 @@ namespace SKEE::CharacterInspection
             RE::NiAVObject* parentIdentity{};
             RE::NiTransform nativeWorld{}, trialWorld{};
             decltype(RE::NiAVObject::worldBound) nativeBound{}, trialBound{};
+            std::size_t depth{};
         };
         std::vector<TrialNode> trialNodes;
+        // Copied diagnostic values only: no retained node references, JSON/string
+        // allocations or native callbacks in the restoration observation path.
+        struct TrialConflict
+        {
+            std::uintptr_t identity{}, expectedParent{}, currentParent{};
+            std::array<char, 129> name{};
+            std::size_t index{}, depth{};
+            RE::NiTransform nativeWorld{}, previewWorld{}, currentWorld{};
+            decltype(RE::NiAVObject::worldBound) nativeBound{}, previewBound{}, currentBound{};
+            bool parentChanged{}, rotationChanged{}, positionChanged{}, scaleChanged{};
+            bool boundCenterChanged{}, boundRadiusChanged{}, worldMatchesNative{}, boundMatchesNative{};
+        };
+        struct TrialRestoreReport
+        {
+            const char* outcome{"not-attempted"};
+            std::size_t nodesExamined{}, conflictingNodes{}, sampleCount{};
+            std::array<std::size_t, 6> fieldCounts{}; // parent, rotation, position, scale, center, radius
+            std::array<TrialConflict, 8> samples{};
+            std::uintptr_t root{}, liveRoot{}, expectedParent{}, currentParent{};
+            RE::NiMatrix3 nativeLocal{}, previewLocal{}, currentLocal{};
+            bool rootLocalObserved{}, rootLocalChanged{}, rootLocalMatchesNative{};
+            float appliedYaw{};
+            std::int64_t intervalMilliseconds{};
+        };
+        TrialRestoreReport trialRestoreReport;
+        std::int64_t trialAppliedAt{};
 
         bool SameRotation(const RE::NiMatrix3& a, const RE::NiMatrix3& b)
         {
@@ -1023,16 +1050,67 @@ namespace SKEE::CharacterInspection
             return SameRotation(a.rotate, b.rotate) && SamePoint(a.translate, b.translate) &&
                 std::isfinite(a.scale) && std::isfinite(b.scale) && std::abs(a.scale-b.scale) <= 0.0001F;
         }
+        void ObserveTrialNode(const TrialNode& node, std::size_t index)
+        {
+            auto* object = node.object.get();
+            auto& report = trialRestoreReport;
+            ++report.nodesExamined;
+            const std::array<bool, 6> changed{
+                object->parent != node.parentIdentity,
+                !SameRotation(object->world.rotate, node.trialWorld.rotate),
+                !SamePoint(object->world.translate, node.trialWorld.translate),
+                !std::isfinite(object->world.scale) || !std::isfinite(node.trialWorld.scale) ||
+                    std::abs(object->world.scale-node.trialWorld.scale) > 0.0001F,
+                !SamePoint(object->worldBound.center, node.trialBound.center),
+                object->worldBound.radius != node.trialBound.radius};
+            if (std::none_of(changed.begin(), changed.end(), [](bool value) { return value; })) return;
+            ++report.conflictingNodes;
+            for (std::size_t i = 0; i < changed.size(); ++i) report.fieldCounts[i] += changed[i] ? 1 : 0;
+            if (report.sampleCount == report.samples.size()) return;
+            auto& sample = report.samples[report.sampleCount++];
+            sample.identity = reinterpret_cast<std::uintptr_t>(object);
+            sample.expectedParent = reinterpret_cast<std::uintptr_t>(node.parentIdentity);
+            sample.currentParent = reinterpret_cast<std::uintptr_t>(object->parent);
+            if (const auto* name = object->name.c_str())
+                for (std::size_t i = 0; i+1 < sample.name.size() && name[i]; ++i) sample.name[i] = name[i];
+            sample.index = index; sample.depth = node.depth;
+            sample.nativeWorld = node.nativeWorld; sample.previewWorld = node.trialWorld;
+            sample.currentWorld = object->world;
+            sample.nativeBound = node.nativeBound; sample.previewBound = node.trialBound;
+            sample.currentBound = object->worldBound;
+            sample.parentChanged = changed[0]; sample.rotationChanged = changed[1];
+            sample.positionChanged = changed[2]; sample.scaleChanged = changed[3];
+            sample.boundCenterChanged = changed[4]; sample.boundRadiusChanged = changed[5];
+            sample.worldMatchesNative = SameWorld(object->world, node.nativeWorld);
+            sample.boundMatchesNative = SamePoint(object->worldBound.center, node.nativeBound.center) &&
+                object->worldBound.radius == node.nativeBound.radius;
+        }
         bool RemoveTrialPreview()
         {
             // Strong references keep the copied branch alive, but never replay a
             // detached race/sex branch onto its replacement or foreign hierarchy.
             bool owned = true;
-            if (avatar.get() == LiveAvatar() && avatar && avatar->parent == parent.get()) {
+            auto* live = LiveAvatar();
+            trialRestoreReport = {};
+            auto& report = trialRestoreReport;
+            report.root = reinterpret_cast<std::uintptr_t>(avatar.get());
+            report.liveRoot = reinterpret_cast<std::uintptr_t>(live);
+            report.expectedParent = reinterpret_cast<std::uintptr_t>(parent.get());
+            report.currentParent = avatar ? reinterpret_cast<std::uintptr_t>(avatar->parent) : 0;
+            report.appliedYaw = appliedYaw;
+            report.intervalMilliseconds = std::max<std::int64_t>(0, NowMilliseconds()-trialAppliedAt);
+            if (avatar.get() == live && avatar && avatar->parent == parent.get()) {
+                report.rootLocalObserved = true;
+                report.nativeLocal = nativeRotation; report.previewLocal = previewRotation;
+                report.currentLocal = avatar->local.rotate;
+                report.rootLocalChanged = !SameRotation(avatar->local.rotate, previewRotation);
+                report.rootLocalMatchesNative = SameRotation(avatar->local.rotate, nativeRotation);
                 if (SameRotation(avatar->local.rotate, previewRotation)) avatar->local.rotate = nativeRotation;
                 else owned = false;
+                std::size_t index = 0;
                 for (const auto& node : trialNodes) {
                     auto* object = node.object.get();
+                    ObserveTrialNode(node, index++); // copy before restoring this node's fields
                     if (object->parent != node.parentIdentity) { owned = false; continue; }
                     // Restore only values that still match OUR copied preview.
                     // Foreign animation/renderer writes are not overwritten.
@@ -1042,12 +1120,17 @@ namespace SKEE::CharacterInspection
                         object->worldBound.radius == node.trialBound.radius) object->worldBound = node.nativeBound;
                     else owned = false;
                 }
+                report.outcome = owned ? "restored-owned-values" : "field-conflict";
             }
             // Replacement roots need no writes: the obsolete branch is discarded.
-            else if (avatar.get() == LiveAvatar()) owned = false;
+            else if (avatar.get() == live) { owned = false; report.outcome = "root-parent-conflict"; }
+            else report.outcome = "discarded-replaced-root";
             if (!owned) {
                 ++unsafeTrialRestoreConflicts;
                 SKSE::log::warn("Unsafe avatar trial restore conflict; only still-owned preview values restored");
+                SKSE::log::warn("Unsafe avatar trial restore observation: outcome={}, yaw={}, intervalMs={}, rootLocalChanged={}, nodesExamined={}, conflictingNodes={}, samples={}",
+                    report.outcome, report.appliedYaw, report.intervalMilliseconds, report.rootLocalChanged,
+                    report.nodesExamined, report.conflictingNodes, report.sampleCount);
             }
             trialNodes.clear(); avatar.reset(); parent.reset(); appliedYaw = 0;
             return owned;
@@ -1103,7 +1186,7 @@ namespace SKEE::CharacterInspection
             for (const auto& node : nodes) {
                 auto* object = node.object.get();
                 TrialNode copy{node.object, object->parent, object->world, object->world,
-                    object->worldBound, object->worldBound};
+                    object->worldBound, object->worldBound, node.depth};
                 copy.trialWorld.rotate = yaw*copy.nativeWorld.rotate;
                 copy.trialWorld.translate = pivot+yaw*(copy.nativeWorld.translate-pivot);
                 // Empty spheres carry no geometry; preserve their arbitrary center.
@@ -1115,6 +1198,7 @@ namespace SKEE::CharacterInspection
             }
             // Complete bounded preflight and allocation BEFORE the first write.
             trialNodes = std::move(planned);
+            trialAppliedAt = NowMilliseconds();
             avatar.reset(root); parent.reset(root->parent);
             nativeRotation = root->local.rotate; previewRotation = nextLocal.rotate;
             root->local.rotate = previewRotation;
@@ -1305,11 +1389,79 @@ namespace SKEE::CharacterInspection
         avatar.reset(); parent.reset(); requestedYaw = appliedYaw = 0;
         trialNodes.clear(); unsafeTrialEnabled = false;
         unsafeTrialApplications = unsafeTrialRestoreConflicts = 0;
+        trialRestoreReport = {}; trialAppliedAt = 0;
         movieIdentity = nullptr;
         // Fresh registration tokens cancel old queued inputs even if an engine
         // allocator reuses a movie address on the next menu opening.
         MenuExtensions::GetInterface()->UnregisterProvider(provider);
         FaceView::RefreshAvatarAnchor();
+    }
+    namespace
+    {
+        std::string TrialIdentity(std::uintptr_t identity)
+        {
+            std::ostringstream text; text << "0x" << std::hex << identity; return text.str();
+        }
+        nlohmann::json TrialMatrix(const RE::NiMatrix3& matrix)
+        {
+            auto result = nlohmann::json::array();
+            for (unsigned i = 0; i < 3; ++i) for (unsigned j = 0; j < 3; ++j)
+                result.push_back(std::isfinite(matrix.entry[i][j]) ? nlohmann::json(matrix.entry[i][j]) : nlohmann::json(nullptr));
+            return result;
+        }
+        nlohmann::json TrialPoint(const RE::NiPoint3& point)
+        {
+            auto result = nlohmann::json::array();
+            for (const auto value : {point.x, point.y, point.z})
+                result.push_back(std::isfinite(value) ? nlohmann::json(value) : nlohmann::json(nullptr));
+            return result;
+        }
+        nlohmann::json TrialWorld(const RE::NiTransform& world)
+        {
+            return {{"position", TrialPoint(world.translate)}, {"rotationRowMajor", TrialMatrix(world.rotate)},
+                {"scale", std::isfinite(world.scale) ? nlohmann::json(world.scale) : nlohmann::json(nullptr)},
+                {"validFrame", Frame(world)}};
+        }
+        nlohmann::json TrialBound(const decltype(RE::NiAVObject::worldBound)& bound)
+        {
+            return {{"center", TrialPoint(bound.center)},
+                {"radius", std::isfinite(bound.radius) ? nlohmann::json(bound.radius) : nlohmann::json(nullptr)}};
+        }
+        nlohmann::json TrialRestoreObservation()
+        {
+            const auto& report = trialRestoreReport;
+            auto samples = nlohmann::json::array();
+            for (std::size_t i = 0; i < report.sampleCount; ++i) {
+                const auto& s = report.samples[i];
+                samples.push_back({{"identity", TrialIdentity(s.identity)}, {"name", s.name.data()},
+                    {"index", s.index}, {"depth", s.depth}, {"expectedParent", TrialIdentity(s.expectedParent)},
+                    {"currentParent", TrialIdentity(s.currentParent)},
+                    {"changed", {{"parent", s.parentChanged}, {"worldRotation", s.rotationChanged},
+                        {"worldPosition", s.positionChanged}, {"worldScale", s.scaleChanged},
+                        {"boundCenter", s.boundCenterChanged}, {"boundRadius", s.boundRadiusChanged}}},
+                    {"worldMatchesNative", s.worldMatchesNative}, {"boundMatchesNative", s.boundMatchesNative},
+                    {"nativeWorld", TrialWorld(s.nativeWorld)}, {"previewWorld", TrialWorld(s.previewWorld)},
+                    {"currentWorld", TrialWorld(s.currentWorld)}, {"nativeBound", TrialBound(s.nativeBound)},
+                    {"previewBound", TrialBound(s.previewBound)}, {"currentBound", TrialBound(s.currentBound)}});
+            }
+            nlohmann::json result{{"outcome", report.outcome}, {"appliedYaw", report.appliedYaw},
+                {"intervalMilliseconds", std::to_string(report.intervalMilliseconds)},
+                {"root", TrialIdentity(report.root)}, {"liveRoot", TrialIdentity(report.liveRoot)},
+                {"expectedParent", TrialIdentity(report.expectedParent)}, {"currentParent", TrialIdentity(report.currentParent)},
+                {"rootLocalObserved", report.rootLocalObserved}, {"rootLocalChanged", report.rootLocalChanged},
+                {"rootLocalMatchesNative", report.rootLocalMatchesNative}, {"nodesExamined", report.nodesExamined},
+                {"conflictingNodes", report.conflictingNodes}, {"samplesTruncated", report.conflictingNodes > report.sampleCount},
+                {"fieldCounts", {{"parent", report.fieldCounts[0]}, {"worldRotation", report.fieldCounts[1]},
+                    {"worldPosition", report.fieldCounts[2]}, {"worldScale", report.fieldCounts[3]},
+                    {"boundCenter", report.fieldCounts[4]}, {"boundRadius", report.fieldCounts[5]}}},
+                {"samples", std::move(samples)}, {"writerIdentified", false}};
+            if (report.rootLocalObserved) {
+                result["nativeRootLocalRotation"] = TrialMatrix(report.nativeLocal);
+                result["previewRootLocalRotation"] = TrialMatrix(report.previewLocal);
+                result["currentRootLocalRotation"] = TrialMatrix(report.currentLocal);
+            }
+            return result;
+        }
     }
     nlohmann::json CaptureDiagnostics()
     {
@@ -1319,6 +1471,7 @@ namespace SKEE::CharacterInspection
             {"unsafeAvatarTrial", {{"enabled", unsafeTrialEnabled}, {"mode", "rigid-world-preview-no-native-refit"},
                 {"applications", std::to_string(unsafeTrialApplications)}, {"restoreConflicts", std::to_string(unsafeTrialRestoreConflicts)},
                 {"ownedNodeCount", trialNodes.size()}, {"ancestorRefit", false}, {"rotationQualified", false},
+                {"lastRestore", TrialRestoreObservation()},
                 {"bypasses", "fixed-bound and pure-composer/bounds qualification; skin/culling/cache behaviour unqualified"}}},
             {"viewTrial", {{"mode", "quiet-window-not-release"}, {"quietMilliseconds", ViewDirectionTrial::quietMilliseconds},
                 {"pending", viewTrial.pending}, {"requestedDisplayYaw", viewTrial.requested},

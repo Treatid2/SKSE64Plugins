@@ -33,3 +33,33 @@ owned node count, restoration conflicts, bypasses and `rotationQualified:false`.
 The existing bound probe continues reporting the STRICT contracts, even while
 the experimental trial is active. It is not permission to use the strict path.
 Source-contract/math-reference tests do not execute the DLL or establish safety.
+
+## Restoration-conflict observations
+
+The 1418c8a live trial accepted one 14-degree request, then latched a restoration
+conflict and reset yaw to zero. That establishes neither visible rotation nor
+the identity of another writer. The next instrumentation retains
+`unsafeAvatarTrial.lastRestore` without weakening those ownership guards.
+
+The report separates root-local rotation from descendant world rotation,
+position, scale, sphere center/radius and parent changes. For the same live root
+and parent, totals cover every copied node; detailed samples retain only the
+first eight conflicting nodes in traversal order, with names capped at 128 bytes.
+Each sample copies baseline, preview and observed values before that node's
+guarded restoration. It retains numeric identities, not extra node references.
+Serialization reads these copies, not the live scene; non-finite values are null.
+
+`worldMatchesNative`, `boundMatchesNative` and `rootLocalMatchesNative` can suggest
+recomposition to the original pose, but do not identify the engine/mod writer.
+`writerIdentified` remains false. `intervalMilliseconds` is elapsed time between
+application and observation, not a frame count or proof of render timing.
+`samplesTruncated` means totals exceed the retained detail; it is not evidence of
+an incomplete subtree traversal. Root-parent conflicts and replacement roots
+have distinct outcomes and do not inspect/replay the detached branch.
+
+This is the most recent restoration report, not a current ownership assertion.
+It remains available after a refusal and is cleared when menu state is restored
+on close/reinitialization. The fixed storage and source-contract/reference checks
+bound diagnostic growth, but do not prove the native capture's actual size or
+runtime correctness. No new update/refit target, guard bypass or animation-state
+overwrite is introduced by this instrumentation.
