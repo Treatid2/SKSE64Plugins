@@ -726,6 +726,8 @@ namespace SKEE::CharacterInspection
         using SceneFunction = void (*)(RE::NiAVObject*);
         Process original{};
         bool installed{}, rejected{};
+        bool unsafeTrialEnabled{}; // explicit per-menu opt-in, never persisted
+        std::uint64_t unsafeTrialApplications{}, unsafeTrialRestoreConflicts{};
         RE::GFxMovie* movieIdentity{}; // identity only, accessed on menu/game tasks
         float requestedYaw{}, appliedYaw{};
         ViewDirectionTrial viewTrial;
@@ -768,6 +770,14 @@ namespace SKEE::CharacterInspection
         RE::NiMatrix3 nativeRotation{}, previewRotation{};
         struct Node { RE::NiPointer<RE::NiAVObject> object; std::size_t depth; };
         struct GraphInspection { nlohmann::json failure; std::size_t validatedNodes{}; };
+        struct TrialNode
+        {
+            RE::NiPointer<RE::NiAVObject> object;
+            RE::NiAVObject* parentIdentity{};
+            RE::NiTransform nativeWorld{}, trialWorld{};
+            decltype(RE::NiAVObject::worldBound) nativeBound{}, trialBound{};
+        };
+        std::vector<TrialNode> trialNodes;
 
         bool SameRotation(const RE::NiMatrix3& a, const RE::NiMatrix3& b)
         {
@@ -1003,8 +1013,121 @@ namespace SKEE::CharacterInspection
             auto* player = RE::PlayerCharacter::GetSingleton();
             return player ? player->Get3D(false) : nullptr;
         }
+        bool SamePoint(const RE::NiPoint3& a, const RE::NiPoint3& b)
+        {
+            return CameraPolicy::Finite(a) && CameraPolicy::Finite(b) &&
+                (a-b).Length() <= 0.0001F;
+        }
+        bool SameWorld(const RE::NiTransform& a, const RE::NiTransform& b)
+        {
+            return SameRotation(a.rotate, b.rotate) && SamePoint(a.translate, b.translate) &&
+                std::isfinite(a.scale) && std::isfinite(b.scale) && std::abs(a.scale-b.scale) <= 0.0001F;
+        }
+        bool RemoveTrialPreview()
+        {
+            // Strong references keep the copied branch alive, but never replay a
+            // detached race/sex branch onto its replacement or foreign hierarchy.
+            bool owned = true;
+            if (avatar.get() == LiveAvatar() && avatar && avatar->parent == parent.get()) {
+                if (SameRotation(avatar->local.rotate, previewRotation)) avatar->local.rotate = nativeRotation;
+                else owned = false;
+                for (const auto& node : trialNodes) {
+                    auto* object = node.object.get();
+                    if (object->parent != node.parentIdentity) { owned = false; continue; }
+                    // Restore only values that still match OUR copied preview.
+                    // Foreign animation/renderer writes are not overwritten.
+                    if (SameWorld(object->world, node.trialWorld)) object->world = node.nativeWorld;
+                    else owned = false;
+                    if (SamePoint(object->worldBound.center, node.trialBound.center) &&
+                        object->worldBound.radius == node.trialBound.radius) object->worldBound = node.nativeBound;
+                    else owned = false;
+                }
+            }
+            // Replacement roots need no writes: the obsolete branch is discarded.
+            else if (avatar.get() == LiveAvatar()) owned = false;
+            if (!owned) {
+                ++unsafeTrialRestoreConflicts;
+                SKSE::log::warn("Unsafe avatar trial restore conflict; only still-owned preview values restored");
+            }
+            trialNodes.clear(); avatar.reset(); parent.reset(); appliedYaw = 0;
+            return owned;
+        }
+        bool ApplyTrialPreview(RE::NiAVObject* root)
+        {
+            // Deliberately experimental: do NOT execute unqualified virtual
+            // composers, bounds routines, animation, collision or ancestor refits.
+            // Instead rigidly rotate copied world poses/sphere centers after the
+            // native menu update. Skin/culling/cache correctness is NOT qualified.
+            ProtectedNodes protectedNodes{};
+            if (!TrackingNodes(protectedNodes)) return false;
+            std::unordered_set<RE::NiAVObject*> seen;
+            std::vector<Node> nodes{{RE::NiPointer<RE::NiAVObject>{root}, 0}};
+            seen.insert(root);
+            for (std::size_t i = 0; i < nodes.size(); ++i) {
+                auto* object = nodes[i].object.get(); const auto depth = nodes[i].depth;
+                if (std::find(protectedNodes.begin(), protectedNodes.end(), object) != protectedNodes.end())
+                    return Fail("trial-protected-tracking-or-ui-node", object, depth);
+                if (!InRdata(*reinterpret_cast<const std::uintptr_t*>(object), 0x31*sizeof(std::uintptr_t)))
+                    return Fail("trial-object-vtable", object, depth);
+                if (!Frame(object->local) || !Frame(object->world) || !BoundProbe::Valid(WorldSphere(object)))
+                    return Fail("trial-object-frame-or-sphere", object, depth);
+                if (auto* node = object->AsNode()) {
+                    auto& children = node->GetChildren();
+                    if (children.capacity() > maxNodes || children.free_idx() > children.capacity() ||
+                        children.size() > children.free_idx()) return Fail("trial-child-array-contract", object, depth);
+                    for (std::size_t j = 0; j < children.free_idx(); ++j) {
+                        auto* child = children[static_cast<std::uint16_t>(j)].get();
+                        if (!child) continue;
+                        if (child->parent != node) return Fail("trial-child-parent-mismatch", child, depth+1);
+                        if (depth+1 > maxDepth || nodes.size() >= maxNodes || !seen.insert(child).second)
+                            return Fail("trial-child-cycle-or-limit", child, depth+1);
+                        nodes.push_back({RE::NiPointer<RE::NiAVObject>{child}, depth+1});
+                    }
+                }
+            }
+            // Prove no cyclic ancestor lies inside the branch; do not touch it.
+            std::unordered_set<RE::NiAVObject*> ancestorSeen;
+            for (auto* p = root->parent; p; p = p->parent) {
+                if (ancestorSeen.size() >= maxDepth || seen.count(p) || !ancestorSeen.insert(p).second)
+                    return Fail("trial-ancestor-cycle-or-depth", p, ancestorSeen.size());
+            }
+            RE::NiTransform identity;
+            const auto yaw = CameraPolicy::YawAroundEye(identity, {}, requestedYaw).rotate;
+            const auto pivot = root->world.translate;
+            const auto& p = root->parent->world.rotate;
+            auto nextLocal = root->local;
+            nextLocal.rotate = p.Transpose()*yaw*p*root->local.rotate;
+            if (!Frame(nextLocal)) return Fail("trial-composed-local-frame", root);
+            std::vector<TrialNode> planned;
+            planned.reserve(nodes.size());
+            for (const auto& node : nodes) {
+                auto* object = node.object.get();
+                TrialNode copy{node.object, object->parent, object->world, object->world,
+                    object->worldBound, object->worldBound};
+                copy.trialWorld.rotate = yaw*copy.nativeWorld.rotate;
+                copy.trialWorld.translate = pivot+yaw*(copy.nativeWorld.translate-pivot);
+                // Empty spheres carry no geometry; preserve their arbitrary center.
+                if (copy.nativeBound.radius > 0)
+                    copy.trialBound.center = pivot+yaw*(copy.nativeBound.center-pivot);
+                if (!Frame(copy.trialWorld) || !CameraPolicy::Finite(copy.trialBound.center))
+                    return Fail("trial-composed-world-frame-or-sphere", object, node.depth);
+                planned.push_back(std::move(copy));
+            }
+            // Complete bounded preflight and allocation BEFORE the first write.
+            trialNodes = std::move(planned);
+            avatar.reset(root); parent.reset(root->parent);
+            nativeRotation = root->local.rotate; previewRotation = nextLocal.rotate;
+            root->local.rotate = previewRotation;
+            for (const auto& node : trialNodes) {
+                node.object->world = node.trialWorld;
+                node.object->worldBound = node.trialBound;
+            }
+            appliedYaw = requestedYaw; ++unsafeTrialApplications;
+            return true;
+        }
         bool RemovePreview(bool propagate = true)
         {
+            if (!trialNodes.empty()) return RemoveTrialPreview();
             if (!avatar) return true;
             // Never replay a detached race/sex root onto its replacement.
             if (avatar.get() != LiveAvatar()) { avatar.reset(); parent.reset(); appliedYaw = 0; return true; }
@@ -1036,6 +1159,7 @@ namespace SKEE::CharacterInspection
             if (!root->parent) return Fail("missing-avatar-parent", root);
             if (!Frame(root->local)) return Fail("avatar-local-frame", root);
             if (!Frame(root->parent->world)) return Fail("avatar-parent-frame", root->parent);
+            if (unsafeTrialEnabled) return ApplyTrialPreview(root);
             std::vector<Node> nodes;
             std::vector<RE::NiPointer<RE::NiNode>> ancestors;
             if (!Collect(root, nodes, ancestors)) return false;
@@ -1060,6 +1184,23 @@ namespace SKEE::CharacterInspection
                 MenuExtensions::GetInterface()->SetValue(provider, "avatarYaw", appliedYaw); return;
             }
             requestedYaw = static_cast<float>(value);
+        }
+        void UnsafeTrialSlider(double value, void*)
+        {
+            if (!installed || !movieIdentity || (value != 0 && value != 1)) return;
+            if (!RemovePreview()) {
+                unsafeTrialEnabled = false;
+                Reject("unsafe trial restoration ownership conflict");
+            } else {
+                unsafeTrialEnabled = value == 1;
+                requestedYaw = appliedYaw = 0; rejected = false; refusal = nullptr;
+                SKSE::log::warn("Unsafe avatar rotation trial {}: no ancestor refit or native skin/culling qualification",
+                    unsafeTrialEnabled ? "enabled by explicit menu opt-in" : "disabled");
+            }
+            auto* service = MenuExtensions::GetInterface();
+            service->SetValue(provider, "avatarYaw", appliedYaw);
+            service->SetValue(provider, "unsafeAvatarTrial", unsafeTrialEnabled ? 1 : 0);
+            FaceView::RefreshAvatarAnchor();
         }
         void ViewSlider(double value, void*)
         {
@@ -1149,6 +1290,7 @@ namespace SKEE::CharacterInspection
         auto* service = MenuExtensions::GetInterface();
         const bool section = service->RegisterSection({provider, "view", "View", 1u<<30, 1000});
         if (!section || !service->RegisterSlider({provider,"view","avatarYaw","Avatar rotation",-180,180,1,0,AvatarSlider,nullptr}) ||
+            !service->RegisterSlider({provider,"view","unsafeAvatarTrial","Unsafe avatar trial",0,1,1,0,UnsafeTrialSlider,nullptr}) ||
             (FaceView::Supported() && !service->RegisterSlider({provider,"view","viewYaw","View direction",-60,60,1,-FaceView::ViewYaw(),ViewSlider,nullptr}))) {
             service->UnregisterProvider(provider); Reject("View category registration failed");
         }
@@ -1161,6 +1303,8 @@ namespace SKEE::CharacterInspection
             if (!RemovePreview()) Reject("cannot restore a competing preview pose");
         } catch (...) { Reject("preview restoration validation failed"); }
         avatar.reset(); parent.reset(); requestedYaw = appliedYaw = 0;
+        trialNodes.clear(); unsafeTrialEnabled = false;
+        unsafeTrialApplications = unsafeTrialRestoreConflicts = 0;
         movieIdentity = nullptr;
         // Fresh registration tokens cancel old queued inputs even if an engine
         // allocator reuses a movie address on the next menu opening.
@@ -1172,6 +1316,10 @@ namespace SKEE::CharacterInspection
         return {{"avatarRequestedYaw", requestedYaw}, {"avatarAppliedYaw", appliedYaw},
             {"avatarRejected", rejected}, {"avatarRefusal", refusal},
             {"avatarBoundProbe", InspectGraphBounds()},
+            {"unsafeAvatarTrial", {{"enabled", unsafeTrialEnabled}, {"mode", "rigid-world-preview-no-native-refit"},
+                {"applications", std::to_string(unsafeTrialApplications)}, {"restoreConflicts", std::to_string(unsafeTrialRestoreConflicts)},
+                {"ownedNodeCount", trialNodes.size()}, {"ancestorRefit", false}, {"rotationQualified", false},
+                {"bypasses", "fixed-bound and pure-composer/bounds qualification; skin/culling/cache behaviour unqualified"}}},
             {"viewTrial", {{"mode", "quiet-window-not-release"}, {"quietMilliseconds", ViewDirectionTrial::quietMilliseconds},
                 {"pending", viewTrial.pending}, {"requestedDisplayYaw", viewTrial.requested},
                 {"appliedNativeYaw", FaceView::ViewYaw()}, {"displayYaw", -FaceView::ViewYaw()},
