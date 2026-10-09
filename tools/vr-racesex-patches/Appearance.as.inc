@@ -68,7 +68,6 @@
          owner.vrAppearanceSetup = false;
          clearInterval(owner.vrAppearanceTimer);
          clearInterval(owner.vrBackgroundMountTimer);
-         owner.ReleaseVRViewPanel();
          if(owner.vrBackgroundLoader != undefined)
          {
             owner.vrBackgroundLoader.removeListener(owner.vrBackgroundListener);
@@ -327,7 +326,6 @@
       background._height = this.vrLayoutBackground.height;
       if(this.vrMenuProfile.consolidate != 1)
       {
-         this.ReleaseVRViewPanel();
          var old = this.vrLayoutOriginal;
          if(old == undefined || !this.vrLayoutConsolidated) return undefined;
          this.racePanel.slidingCategoryList._y = old.categoryY;
@@ -381,12 +379,7 @@
       this.raceDescription._y = this.vrDescriptionOriginalY-45;
       this.bottomBar.background._visible = false;
       this.bottomBar._x = panel.xMin;
-      // Two permanent view rows live inside the existing pointer surface.
-      // Reserve their space instead of extending the projected menu bounds.
-      var viewHeight = this.vrViewPanel != undefined ? 112 : 0;
-      this.ITEMLIST_HEIGHT_FULL -= viewHeight;
-      this.ITEMLIST_HEIGHT_SHARED -= viewHeight;
-      this.bottomBar._y = panel.yMax-160-viewHeight;
+      this.bottomBar._y = panel.yMax-160;
       this.BOTTOMBAR_SHOWN_Y = this.bottomBar._y;
       this.modeSelect._width = panel.xMax-panel.xMin-16;
       var modeBounds = this.modeSelect.getBounds(this);
@@ -431,7 +424,6 @@
       // Only the background is shortened; registered control geometry is not scaled.
       background._y = this.vrLayoutBackground.y+70;
       background._height = this.vrLayoutBackground.height-70;
-      this.LayoutVRViewPanel(panel);
    }
    function SizeVRFooterText(field)
    {
@@ -563,19 +555,21 @@
    function RefreshVRMenuExtensions()
    {
       var api = _global.skse.plugins.CharGen;
-      if(api.GetMenuExtensions == undefined || !this.bMenuInitialized) return undefined;
+      if(api.GetMenuExtensions == undefined || !this.bMenuInitialized || this.bRaceChanging || this.vrDiagnosticRebuilding) return undefined;
       var revision = Number(api.GetMenuExtensionsRevision());
-      // Update the separate view rows even when native registration is stable:
-      // accepted input does not increment the extension registry revision.
       var sections = api.GetMenuExtensions();
-      this.RefreshVRViewPanel(sections,revision);
       var items = this.itemList.entryList;
       var categories = this.categoryList.entryList;
       var count = 0;
       var catCount = 0;
       for(var i = 0; i < items.length; i++) if(items[i].vrNativeExtension) count++;
       for(var i = 0; i < categories.length; i++) if(categories[i].vrNativeExtension) catCount++;
-      if(revision == this.vrExtensionsRevision && count == this.vrExtensionCount && catCount == this.vrExtensionCategoryCount) return undefined;
+      if(revision == this.vrExtensionsRevision && count == this.vrExtensionCount && catCount == this.vrExtensionCategoryCount)
+      {
+         // Ordinary category flags can change independently of the registry.
+         this.RefreshVRViewCategoryControls();
+         return undefined;
+      }
       this.InvalidateVRDiagnosticControls();
       for(var i = items.length-1; i >= 0; i--) if(items[i].vrNativeExtension) items.splice(i,1);
       for(var i = categories.length-1; i >= 0; i--) if(categories[i].vrNativeExtension) categories.splice(i,1);
@@ -597,6 +591,9 @@
             var control = section.controls[j];
             if(presentation.controlIds != "" && (","+presentation.controlIds+",").indexOf(","+control.id+",") < 0) continue;
             var entry = {type:RaceMenuDefines.ENTRY_TYPE_SLIDER,text:control.label,filterFlag:section.flag,callbackName:"",sliderMin:control.minimum,sliderMax:control.maximum,sliderID:0,position:control.value,interval:control.step,enabled:true,vrNativeExtension:true,vrProvider:section.provider,vrControl:control.id};
+            if(section.provider == "RaceMenuVR2" && section.id == "view" &&
+               (control.id == "avatarYaw" || control.id == "viewYaw"))
+               entry.vrViewBaseFilter = section.flag;
             entry.internalCallback = function()
             {
                var entry = this.entryObject;
@@ -609,6 +606,7 @@
          }
       }
       this.ApplyVRCategoryPresentation();
+      this.RefreshVRViewCategoryControls();
       // Hidden categories still expose their controls through All; hiding is
       // presentation only. Count after those presentation rules to avoid churn.
       this.vrExtensionCategoryCount = 0;

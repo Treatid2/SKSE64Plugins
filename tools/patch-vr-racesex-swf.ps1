@@ -356,8 +356,8 @@ $textEntryText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'vr-race
 $raceMenuText = $raceMenuText.Replace($platformNeedle, $textEntryText + $platformNeedle)
 $appearanceText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'vr-racesex-patches\Appearance.as.inc')
 $raceMenuText = $raceMenuText.Replace($platformNeedle, $appearanceText + $platformNeedle)
-$viewPanelText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'vr-racesex-patches\ViewPanel.as.inc')
-$raceMenuText = $raceMenuText.Replace($platformNeedle, $viewPanelText + $platformNeedle)
+$viewCategoryText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'vr-racesex-patches\ViewCategoryControls.as.inc')
+$raceMenuText = $raceMenuText.Replace($platformNeedle, $viewCategoryText + $platformNeedle)
 $diagnosticText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'vr-racesex-patches\Diagnostics.as.inc')
 $raceMenuText = $raceMenuText.Replace($platformNeedle, $diagnosticText + $platformNeedle)
 foreach ($method in @('SetCategoriesList','SetRaceList','SetSliders')) {

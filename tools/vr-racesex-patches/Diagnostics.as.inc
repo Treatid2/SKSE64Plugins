@@ -171,7 +171,7 @@
       // objects. Object identity alone does not detect in-place list updates.
       var fields = ["type","sliderID","raceID","text","callbackName","vrNativeExtension",
          "vrProvider","vrControl","sliderMin","sliderMax","interval","position",
-         "enabled","filterFlag","flag","hasColor","isColorEnabled"];
+         "enabled","filterFlag","flag","priority","textFilter","hasColor","isColorEnabled"];
       var captured = [];
       for(var i = 0; i < entries.length; i++)
       {

@@ -58,6 +58,9 @@ for (const [name,mutate] of Object.entries({
   step:m=>m.itemList.entryList[0].interval=0.5,
   manualValue:m=>m.itemList.entryList[0].position=1,
   disabled:m=>m.itemList.entryList[0].enabled=false,
+  priority:m=>m.itemList.entryList[0].priority=-2,
+  filter:m=>m.itemList.entryList[0].filterFlag=8,
+  categoryTextFilter:m=>m.categoryList.entryList[0].textFilter='Changed',
   category:m=>m.categoryList.entryList[0].enabled=false,
   raceIdentity:m=>m.itemList.entryList[2].raceID=21,
 })) test('rejects changed snapshot: '+name,()=>{
