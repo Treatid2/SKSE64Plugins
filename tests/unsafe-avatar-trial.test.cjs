@@ -12,16 +12,21 @@ function body(name) {
   while (depth && end<source.length) { if(source[end]==='{')depth++; if(source[end]==='}')depth--; end++; }
   assert.equal(depth,0); return source.slice(start+1,end-1);
 }
-test('unsafe path needs explicit per-menu opt-in and leaves strict production collection intact', () => {
+test('avatar slider directly selects the tested preview mode without a separate unsafe control', () => {
   assert.match(source, /bool unsafeTrialEnabled\{\}/);
-  assert.match(body('Register'), /"unsafeAvatarTrial","Unsafe avatar trial",0,1,1,0/);
+  assert.doesNotMatch(source, /UnsafeTrialSlider|"Unsafe avatar trial"/);
+  const register=body('Register');
+  assert.match(register, /"avatarYaw","Avatar rotation",-180,180,1,0/);
+  assert.match(register, /else\s*\{[\s\S]*unsafeTrialEnabled = true/);
+  assert.doesNotMatch(register, /ApplyPreview\(|ApplyTrialPreview\(|->(?:local|world|worldBound)\s*=/);
+  assert.ok(register.indexOf('RegisterSlider(') < register.indexOf('unsafeTrialEnabled = true'));
   const apply=body('ApplyPreview');
   assert.match(apply, /if \(unsafeTrialEnabled\) return ApplyTrialPreview\(root\)/);
   assert.match(apply, /if \(!Collect\(root, nodes, ancestors\)\) return false/);
   assert.match(body('Collect'), /if \(!CollectAncestors\(root, ancestors\)\) return false/);
   assert.match(body('Restore'), /unsafeTrialEnabled = false/);
-  assert.match(body('UnsafeTrialSlider'), /value != 0 && value != 1/);
-  assert.ok(body('UnsafeTrialSlider').indexOf('RemovePreview()') < body('UnsafeTrialSlider').indexOf('unsafeTrialEnabled = value == 1'));
+  assert.match(body('ProcessHook'), /!rejected && requestedYaw != 0 && !ApplyPreview\(\)/);
+  assert.match(source, /"activation", "avatar-slider-no-separate-opt-in"/);
   assert.match(source, /"rotationQualified", false/);
 });
 test('trial validates a whole bounded avatar-only subtree before writing and calls no transform or refit target', () => {
@@ -53,11 +58,10 @@ test('replacement resets angle and stale tokens only after bounded qualification
   assert.match(observe, /Collect\(root, nodes, ancestors\)/);
   assert.ok(observe.indexOf('CollectTrialBranch(root, nodes)') < observe.indexOf('rejected = !valid'));
   assert.match(observe, /replacementRefusal = refusal/);
-  assert.equal((observe.match(/RegisterSlider\(/g)||[]).length,2);
+  assert.equal((observe.match(/RegisterSlider\(/g)||[]).length,1);
   assert.match(observe, /if \(!registered\)/);
   assert.doesNotMatch(observe, /ApplyPreview\(|->(?:local|world|worldBound|parent)\s*=|Propagate\(|->Update\(/);
   assert.match(body('AvatarSlider'), /if \(ObserveAvatarLifecycle\(\)\) return/);
-  assert.match(body('UnsafeTrialSlider'), /if \(ObserveAvatarLifecycle\(\)\) return/);
   const hook=body('ProcessHook');
   assert.ok(hook.indexOf('ObserveAvatarLifecycle()') < hook.indexOf('original(menu, message)'));
   assert.ok(hook.lastIndexOf('ObserveAvatarLifecycle()') > hook.indexOf('original(menu, message)'));

@@ -726,7 +726,7 @@ namespace SKEE::CharacterInspection
         using SceneFunction = void (*)(RE::NiAVObject*);
         Process original{};
         bool installed{}, rejected{};
-        bool unsafeTrialEnabled{}; // explicit per-menu opt-in, never persisted
+        bool unsafeTrialEnabled{}; // copied-world preview mode for this live menu; never persisted
         std::uint64_t unsafeTrialApplications{}, unsafeTrialRestoreConflicts{};
         RE::GFxMovie* movieIdentity{}; // identity only, accessed on menu/game tasks
         float requestedYaw{}, appliedYaw{};
@@ -1367,24 +1367,6 @@ namespace SKEE::CharacterInspection
             }
             requestedYaw = static_cast<float>(value);
         }
-        void UnsafeTrialSlider(double value, void*)
-        {
-            if (!installed || !movieIdentity || (value != 0 && value != 1)) return;
-            if (ObserveAvatarLifecycle()) return;
-            if (!RemovePreview()) {
-                unsafeTrialEnabled = false;
-                Reject("unsafe trial restoration ownership conflict");
-            } else {
-                unsafeTrialEnabled = value == 1;
-                requestedYaw = appliedYaw = 0; rejected = false; refusal = nullptr;
-                SKSE::log::warn("Unsafe avatar rotation trial {}: no ancestor refit or native skin/culling qualification",
-                    unsafeTrialEnabled ? "enabled by explicit menu opt-in" : "disabled");
-            }
-            auto* service = MenuExtensions::GetInterface();
-            service->SetValue(provider, "avatarYaw", appliedYaw);
-            service->SetValue(provider, "unsafeAvatarTrial", unsafeTrialEnabled ? 1 : 0);
-            FaceView::RefreshAvatarAnchor();
-        }
         bool ObserveAvatarLifecycle()
         {
             auto* root = LiveAvatar();
@@ -1423,10 +1405,9 @@ namespace SKEE::CharacterInspection
             if (valid) refusal = nullptr;
             else refusal["stage"] = "replacement qualification failed";
             auto* service = MenuExtensions::GetInterface();
-            // Fresh tokens invalidate old queued yaw/opt-in callbacks. Keep the
-            // human opt-in, but never carry their old angle onto the new model.
-            const bool registered = service->RegisterSlider({provider,"view","avatarYaw","Avatar rotation",-180,180,1,0,AvatarSlider,nullptr}) &&
-                service->RegisterSlider({provider,"view","unsafeAvatarTrial","Unsafe avatar trial",0,1,1,unsafeTrialEnabled ? 1.0 : 0.0,UnsafeTrialSlider,nullptr});
+            // Fresh tokens invalidate old queued yaw callbacks. Never carry
+            // the old angle onto the replacement model.
+            const bool registered = service->RegisterSlider({provider,"view","avatarYaw","Avatar rotation",-180,180,1,0,AvatarSlider,nullptr});
             if (!registered) {
                 lifecycleState = "replacement-registration-failed";
                 service->UnregisterProvider(provider);
@@ -1528,9 +1509,13 @@ namespace SKEE::CharacterInspection
         auto* service = MenuExtensions::GetInterface();
         const bool section = service->RegisterSection({provider, "view", "View", 1u<<30, 1000});
         if (!section || !service->RegisterSlider({provider,"view","avatarYaw","Avatar rotation",-180,180,1,0,AvatarSlider,nullptr}) ||
-            !service->RegisterSlider({provider,"view","unsafeAvatarTrial","Unsafe avatar trial",0,1,1,0,UnsafeTrialSlider,nullptr}) ||
             (FaceView::Supported() && !service->RegisterSlider({provider,"view","viewYaw","View direction",-60,60,1,-FaceView::ViewYaw(),ViewSlider,nullptr}))) {
             service->UnregisterProvider(provider); Reject("View category registration failed");
+        } else {
+            // Register at zero: opening the menu performs no preview writes.
+            // A non-zero avatar-slider request uses the previously tested mode,
+            // with the same topology, ownership, lifecycle and restoration guards.
+            unsafeTrialEnabled = true;
         }
     }
     void Restore()
@@ -1631,7 +1616,8 @@ namespace SKEE::CharacterInspection
                 {"previousRefusal", replacementRefusal}}},
             {"avatarRejected", rejected}, {"avatarRefusal", refusal},
             {"avatarBoundProbe", InspectGraphBounds()},
-            {"unsafeAvatarTrial", {{"enabled", unsafeTrialEnabled}, {"mode", "rigid-world-preview-inverse-current-pose-assumption"},
+            {"unsafeAvatarTrial", {{"enabled", unsafeTrialEnabled}, {"activation", "avatar-slider-no-separate-opt-in"},
+                {"mode", "rigid-world-preview-inverse-current-pose-assumption"},
                 {"applications", std::to_string(unsafeTrialApplications)}, {"restoreConflicts", std::to_string(unsafeTrialRestoreConflicts)},
                 {"ownedNodeCount", trialNodes.size()}, {"ancestorRefit", false}, {"rotationQualified", false},
                 {"lastRestore", TrialRestoreObservation()},

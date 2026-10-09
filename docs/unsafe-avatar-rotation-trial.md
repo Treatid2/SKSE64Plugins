@@ -1,9 +1,18 @@
-# Explicit unsafe avatar rotation trial
+# Guarded avatar preview rotation — qualification limits
 
-This is human-authorised diagnostic functionality, not a qualified rotation fix.
-In the View category set **Unsafe avatar trial** from 0 to 1, then adjust
-**Avatar rotation**. Default is 0 on every menu opening; it is not saved in an INI,
-preset or game save. Ordinary avatar rotation keeps its previous strict guards.
+The human tested the 76f40c3 candidate across Nord, Khajiit, Argonian, female
+characters and a close/reopen through `showracemenu`, reporting consistent
+rotation and a good presentation. Those rendered observations are not universal
+native skin/culling/bounds or external-writer qualification.
+
+The successor removes the separate **Unsafe avatar trial** slider at the human's
+request. Adjust **Avatar rotation** directly. The same copied-world preview mode
+is selected only for a successfully registered live menu, with yaw initially zero.
+Opening a menu does not itself write preview transforms. A non-zero yaw request
+is still subject to the same bounded topology, ownership and restoration guards.
+There is no separate enable/reset callback that can clear a same-root refusal.
+No yaw or activation state is saved in an INI, preset or game save. The prior
+strict collection path remains in source; it is not the selected visible control.
 
 The trial validates the complete avatar subtree's bounded topology, transforms,
 spheres and exclusion of tracked headset/menu nodes, then temporarily writes
@@ -27,7 +36,7 @@ This **assumes changed descendant world values still use the preview basis**.
 The root witnesses do not prove an external writer's convention. An independently
 rewritten native-basis pose that does not match its old snapshot can therefore
 be inverse-turned incorrectly. `externalWriterBasisQualified:false` explicitly
-records that unresolved risk; this remains a default-off, unsafe experiment.
+records that unresolved risk; removing the UI switch does not qualify that basis.
 No wider epsilon or unqualified engine update has been used to conceal it.
 
 If the preflight fails, only still-matching copied fields on unchanged parents
@@ -48,11 +57,12 @@ looking like continuity. A different root discards obsolete preview ownership
 without replaying its poses; yaw resets to zero. The replacement must pass the
 same bounded read-only collection used by its selected mode before the old
 refusal clears. Same-root topology/basis failures remain latched; no continuous
-retry is added. Invalid replacement qualification also latches. Explicit opt-in
-remains available for a human retry after inspecting a settled model.
+retry is added. Invalid replacement qualification also latches. The removed
+opt-in callback cannot be used to reset a same-root refusal; close/reopen starts
+a fresh menu.
 
-The existing human opt-in survives a valid rebuild, but its old angle does not.
-Fresh avatar-yaw/opt-in registration tokens cancel queued old-root inputs; a
+The selected preview mode survives a valid rebuild, but its old angle does not.
+Fresh avatar-yaw registration tokens cancel queued old-root inputs; a
 callback discovering a replacement itself is discarded. Temporary missing 3D
 cancels yaw and preserves a refusal on an observed root: returning the same root
 does not silently recover ownership. Close clears the retained lifecycle root.
@@ -65,13 +75,14 @@ topology guard. No callback ordering, external writer basis, skin/cache/bounds
 or rendered safety qualification is claimed by this correction.
 
 For a live test start with a small angle (e.g. 10–15 degrees), inspect body, hair
-and shadows, then return yaw to 0 and disable the trial before closing. Test
+and shadows, then return yaw to 0 before closing. Test
 face/normal view, +/-90 and 180 degrees only if the small trial is coherent.
 Check close/reopen and race/sex replacement separately. Do not save while a
 known bad presentation is active. These are suggested future test actions, not
 automated runtime dispatch. Keep crash/hang dumps and restoration diagnostics.
 
-`CaptureDiagnostics().unsafeAvatarTrial` exposes opt-in state, applications,
+`CaptureDiagnostics().unsafeAvatarTrial` retains its diagnostic key for continuity
+and exposes preview-mode state, activation policy, applications,
 owned node count, restoration conflicts, bypasses and `rotationQualified:false`.
 The existing bound probe continues reporting the STRICT contracts, even while
 the experimental trial is active. It is not permission to use the strict path.
