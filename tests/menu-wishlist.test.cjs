@@ -2,7 +2,7 @@
 // Skyrim scene ownership, camera behavior or headset comfort.
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
-const source=fs.readFileSync(require('node:path').join(__dirname,'../tools/vr-racesex-patches/Appearance.as.inc'),'utf8');
+const source=['Appearance.as.inc','ViewPanel.as.inc'].map(name=>fs.readFileSync(require('node:path').join(__dirname,'../tools/vr-racesex-patches',name),'utf8')).join('\n');
 const prototype=Function('return ({'+source.replace(/^   function (\w+)\(/gm,'$1(').replace(/^   }[ \t]*$/gm,'},')+'})')();
 global.RaceMenuDefines={ENTRY_TYPE_CAT:1,ENTRY_TYPE_SLIDER:2};
 const calls=[];
@@ -60,6 +60,13 @@ assert.equal(layout.bottomBar._y,844,'third action row grows footer instead of p
 assert.equal(layout.itemList.listHeight,630);
 conditional._visible=false;layout.LayoutVRPanel();assert.equal(layout.itemList.listHeight,650,'removing contextual action restores list space');
 assert.equal(layout.bottomBar._y,864,'layout growth is idempotent and reversible');
+const panelRows=Array.from({length:2},()=>({_xscale:100,_yscale:100,getBounds:()=>({xMin:0,xMax:400,yMin:0,yMax:40})}));
+layout.vrViewPanel={rows:panelRows};layout.LayoutVRPanel();
+assert.equal(layout.itemList.listHeight,538,'view panel reserves112 pixels, without resizing slider graphics');
+assert.equal(layout.bottomBar._y,752);assert.equal(layout.vrViewPanel._y,916);
+assert.equal(panelRows[1]._y,48);
+layout.LayoutVRPanel();assert.equal(layout.itemList.listHeight,538,'panel reservation is idempotent');
+delete layout.vrViewPanel;layout.LayoutVRPanel();assert.equal(layout.itemList.listHeight,650,'fallback restores the full list area');
 layout.vrMenuProfile={consolidate:0};layout.LayoutVRPanel();
 assert.equal(layout.itemList.listHeight,825);assert.equal(layout.bottomBar.background._visible,true);assert.equal(layout.searchWidget._y,10);
 assert.equal(layout.racePanel.ListBackground._height,1024);

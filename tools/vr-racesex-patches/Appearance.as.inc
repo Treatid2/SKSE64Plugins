@@ -68,6 +68,7 @@
          owner.vrAppearanceSetup = false;
          clearInterval(owner.vrAppearanceTimer);
          clearInterval(owner.vrBackgroundMountTimer);
+         owner.ReleaseVRViewPanel();
          if(owner.vrBackgroundLoader != undefined)
          {
             owner.vrBackgroundLoader.removeListener(owner.vrBackgroundListener);
@@ -326,6 +327,7 @@
       background._height = this.vrLayoutBackground.height;
       if(this.vrMenuProfile.consolidate != 1)
       {
+         this.ReleaseVRViewPanel();
          var old = this.vrLayoutOriginal;
          if(old == undefined || !this.vrLayoutConsolidated) return undefined;
          this.racePanel.slidingCategoryList._y = old.categoryY;
@@ -379,7 +381,12 @@
       this.raceDescription._y = this.vrDescriptionOriginalY-45;
       this.bottomBar.background._visible = false;
       this.bottomBar._x = panel.xMin;
-      this.bottomBar._y = panel.yMax-160;
+      // Two permanent view rows live inside the existing pointer surface.
+      // Reserve their space instead of extending the projected menu bounds.
+      var viewHeight = this.vrViewPanel != undefined ? 112 : 0;
+      this.ITEMLIST_HEIGHT_FULL -= viewHeight;
+      this.ITEMLIST_HEIGHT_SHARED -= viewHeight;
+      this.bottomBar._y = panel.yMax-160-viewHeight;
       this.BOTTOMBAR_SHOWN_Y = this.bottomBar._y;
       this.modeSelect._width = panel.xMax-panel.xMin-16;
       var modeBounds = this.modeSelect.getBounds(this);
@@ -424,6 +431,7 @@
       // Only the background is shortened; registered control geometry is not scaled.
       background._y = this.vrLayoutBackground.y+70;
       background._height = this.vrLayoutBackground.height-70;
+      this.LayoutVRViewPanel(panel);
    }
    function SizeVRFooterText(field)
    {
@@ -557,6 +565,10 @@
       var api = _global.skse.plugins.CharGen;
       if(api.GetMenuExtensions == undefined || !this.bMenuInitialized) return undefined;
       var revision = Number(api.GetMenuExtensionsRevision());
+      // Update the separate view rows even when native registration is stable:
+      // accepted input does not increment the extension registry revision.
+      var sections = api.GetMenuExtensions();
+      this.RefreshVRViewPanel(sections,revision);
       var items = this.itemList.entryList;
       var categories = this.categoryList.entryList;
       var count = 0;
@@ -567,7 +579,6 @@
       this.InvalidateVRDiagnosticControls();
       for(var i = items.length-1; i >= 0; i--) if(items[i].vrNativeExtension) items.splice(i,1);
       for(var i = categories.length-1; i >= 0; i--) if(categories[i].vrNativeExtension) categories.splice(i,1);
-      var sections = api.GetMenuExtensions();
       this.vrExtensionCount = 0;
       this.vrExtensionCategoryCount = 0;
       for(var i = 0; i < sections.length; i++)
