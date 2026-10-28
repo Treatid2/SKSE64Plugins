@@ -51,9 +51,10 @@ namespace RE
 
 // ============================================================================
 // Relocation IDs — single source of truth for every qualified flat-runtime
-// game address SKEE uses, sorted by AE ID. Skyrim VR uses fixed 1.4.15 RVAs
-// independently qualified against the exact executable, full-memory dump,
-// CommonLib contracts, and VR Address Library mappings.
+// game address SKEE uses, sorted by AE ID. VR-only IDs live in VR/AddressLibrary.h;
+// its remaining unmapped exceptions are documented in VR-ADDRESS-MIGRATION.md.
+// ABI/instruction qualification against the exact 1.4.15 executable remains
+// independent of Address Library resolution.
 // ============================================================================
 inline constexpr std::uint32_t kID_LookupREFRByHandle              = 12331;
 inline constexpr std::uint32_t kID_AttachBipedObject               = 15711;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "AddressLibrary.h"
+
 // Included by SKEEHooks.h after the shared engine types and relocation IDs.
 namespace SKEE
 {
@@ -7,7 +9,15 @@ namespace SKEE
 	bool RetainAdjustedDynamicData(void* a_data);
 
 	template <class Fn>
-	[[nodiscard]] inline Fn VRFunction(std::uintptr_t a_rva) noexcept
+	[[nodiscard]] inline Fn VRFunction(const REL::RelocationID& a_id) noexcept
+	{
+		return reinterpret_cast<Fn>(a_id.address());
+	}
+
+	// No published ID currently matches FxDelegate's qualified VR target.
+	// Keep that explicit exception, rather than substituting an unrelated ID.
+	template <class Fn>
+	[[nodiscard]] inline Fn VRQualifiedFunctionRVA(std::uintptr_t a_rva) noexcept
 	{
 		return reinterpret_cast<Fn>(REL::Offset(a_rva).address());
 	}
@@ -29,7 +39,7 @@ namespace SKEE
 	inline std::uint32_t InitializeShader(RE::BSLightingShaderProperty* a_this, RE::BSGeometry* a_geometry)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<std::uint32_t (*)(RE::BSLightingShaderProperty*, RE::BSGeometry*)>(0x01303AC0)(a_this, a_geometry);
+			return VRFunction<std::uint32_t (*)(RE::BSLightingShaderProperty*, RE::BSGeometry*)>(SKEE::VR::Address::InitializeShader)(a_this, a_geometry);
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return 0;
@@ -43,7 +53,7 @@ namespace SKEE
 	inline void CopyFrom(RE::BSLightingShaderMaterial* a_this, RE::BSLightingShaderMaterial* a_other)
 	{
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::BSLightingShaderMaterial*, RE::BSLightingShaderMaterial*)>(0x0130DE50)(a_this, a_other);
+			VRFunction<void (*)(RE::BSLightingShaderMaterial*, RE::BSLightingShaderMaterial*)>(SKEE::VR::Address::CopyFrom)(a_this, a_other);
 			return;
 		}
 		if (!HasQualifiedCustomAddresses()) {
@@ -56,7 +66,7 @@ namespace SKEE
 	inline std::uint32_t SetNiGeometryTexture(RE::TaskQueueInterface* a_this, RE::NiAVObject* a_geometry, RE::BSTextureSet* a_textureSet)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<std::uint32_t (*)(RE::TaskQueueInterface*, RE::NiAVObject*, RE::BSTextureSet*)>(0x005CF190)(a_this, a_geometry, a_textureSet);
+			return VRFunction<std::uint32_t (*)(RE::TaskQueueInterface*, RE::NiAVObject*, RE::BSTextureSet*)>(SKEE::VR::Address::SetNiGeometryTexture)(a_this, a_geometry, a_textureSet);
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return 0;
@@ -70,7 +80,7 @@ namespace SKEE
 	inline void FaceGen_ApplyMorph(RE::BSFaceGenManager* a_this, RE::BSFaceGenNiNode* a_faceNode, RE::TESNPC* a_npc, const RE::BSFixedString& a_morphName, float a_relative)
 	{
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::BSFaceGenManager*, RE::BSFaceGenNiNode*, RE::TESNPC*, const RE::BSFixedString&, float)>(0x003E1B80)(a_this, a_faceNode, a_npc, a_morphName, a_relative);
+			VRFunction<void (*)(RE::BSFaceGenManager*, RE::BSFaceGenNiNode*, RE::TESNPC*, const RE::BSFixedString&, float)>(SKEE::VR::Address::ApplyMorph)(a_this, a_faceNode, a_npc, a_morphName, a_relative);
 			return;
 		}
 		if (!HasQualifiedCustomAddresses()) {
@@ -83,7 +93,7 @@ namespace SKEE
 	inline void FaceGen_ApplyMorphByPart(RE::BSFaceGenManager* a_this, RE::BSFaceGenNiNode* a_faceNode, RE::BGSHeadPart* a_headPart, const RE::BSFixedString& a_morphName, float a_relative)
 	{
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::BSFaceGenManager*, RE::BSFaceGenNiNode*, RE::BGSHeadPart*, const RE::BSFixedString&, float)>(0x003E1CE0)(a_this, a_faceNode, a_headPart, a_morphName, a_relative);
+			VRFunction<void (*)(RE::BSFaceGenManager*, RE::BSFaceGenNiNode*, RE::BGSHeadPart*, const RE::BSFixedString&, float)>(SKEE::VR::Address::ApplyMorphByPart)(a_this, a_faceNode, a_headPart, a_morphName, a_relative);
 			return;
 		}
 		if (!HasQualifiedCustomAddresses()) {
@@ -96,7 +106,7 @@ namespace SKEE
 	inline std::uint8_t BSFaceGenModel_ApplyRaceMorph(RE::BSFaceGenModel* a_this, RE::BSFixedString* a_morphName, RE::TESModelTri* a_modelMorph, RE::NiAVObject** a_headNode, float a_relative, std::uint8_t a_unk1)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<std::uint8_t (*)(RE::BSFaceGenModel*, RE::BSFixedString*, RE::TESModelTri*, RE::NiAVObject**, float, std::uint8_t)>(0x003E3FA0)(a_this, a_morphName, a_modelMorph, a_headNode, a_relative, a_unk1);
+			return VRFunction<std::uint8_t (*)(RE::BSFaceGenModel*, RE::BSFixedString*, RE::TESModelTri*, RE::NiAVObject**, float, std::uint8_t)>(SKEE::VR::Address::ApplyRaceMorph)(a_this, a_morphName, a_modelMorph, a_headNode, a_relative, a_unk1);
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return 0;
@@ -108,7 +118,7 @@ namespace SKEE
 	inline void UpdateNPCMorphs(RE::TESNPC* a_npc, void* a_unk1, RE::BSFaceGenNiNode* a_faceNode)
 	{
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::TESNPC*, void*, RE::BSFaceGenNiNode*)>(0x00370140)(a_npc, a_unk1, a_faceNode);
+			VRFunction<void (*)(RE::TESNPC*, void*, RE::BSFaceGenNiNode*)>(SKEE::VR::Address::UpdateNPCMorphs)(a_npc, a_unk1, a_faceNode);
 			return;
 		}
 		if (!HasQualifiedCustomAddresses()) {
@@ -121,7 +131,7 @@ namespace SKEE
 	inline void UpdateNPCMorph(RE::TESNPC* a_npc, RE::BGSHeadPart* a_headPart, RE::BSFaceGenNiNode* a_faceNode)
 	{
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::TESNPC*, RE::BGSHeadPart*, RE::BSFaceGenNiNode*)>(0x00370330)(a_npc, a_headPart, a_faceNode);
+			VRFunction<void (*)(RE::TESNPC*, RE::BGSHeadPart*, RE::BSFaceGenNiNode*)>(SKEE::VR::Address::UpdateNPCMorph)(a_npc, a_headPart, a_faceNode);
 			return;
 		}
 		if (!HasQualifiedCustomAddresses()) {
@@ -134,7 +144,7 @@ namespace SKEE
 	inline std::int32_t UpdateHeadState(RE::TESNPC* a_npc, RE::Actor* a_actor, std::uint32_t a_unk1)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<std::int32_t (*)(RE::TESNPC*, RE::Actor*, std::uint32_t)>(0x003727B0)(a_npc, a_actor, a_unk1);
+			return VRFunction<std::int32_t (*)(RE::TESNPC*, RE::Actor*, std::uint32_t)>(SKEE::VR::Address::UpdateHeadState)(a_npc, a_actor, a_unk1);
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return 0;
@@ -146,7 +156,7 @@ namespace SKEE
 	inline void ChangeActorHeadPart(RE::Actor* a_this, RE::BGSHeadPart* a_oldPart, RE::BGSHeadPart* a_newPart)
 	{
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::Actor*, RE::BGSHeadPart*, RE::BGSHeadPart*)>(0x003EBD30)(a_this, a_oldPart, a_newPart);
+			VRFunction<void (*)(RE::Actor*, RE::BGSHeadPart*, RE::BGSHeadPart*)>(SKEE::VR::Address::ChangeHeadPart)(a_this, a_oldPart, a_newPart);
 			return;
 		}
 		if (!HasQualifiedCustomAddresses()) {
@@ -168,7 +178,7 @@ namespace SKEE
 	inline std::uint32_t UpdateModelSkin(RE::NiAVObject* a_object, RE::NiColorA** a_color)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<std::uint32_t (*)(RE::NiAVObject*, RE::NiColorA**)>(0x003EC090)(a_object, a_color);
+			return VRFunction<std::uint32_t (*)(RE::NiAVObject*, RE::NiColorA**)>(SKEE::VR::Address::UpdateModelSkin)(a_object, a_color);
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return 0;
@@ -180,7 +190,7 @@ namespace SKEE
 	inline std::uint32_t UpdateModelHair(RE::NiAVObject* a_object, RE::NiColorA** a_color)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<std::uint32_t (*)(RE::NiAVObject*, RE::NiColorA**)>(0x003EC150)(a_object, a_color);
+			return VRFunction<std::uint32_t (*)(RE::NiAVObject*, RE::NiColorA**)>(SKEE::VR::Address::UpdateModelHair)(a_object, a_color);
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return 0;
@@ -194,7 +204,7 @@ namespace SKEE
 	inline std::int32_t AddRaceMenuSlider(RE::RaceMenuSliderArray* a_sliders, RE::RaceMenuSlider* a_slider)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<std::int32_t (*)(RE::RaceMenuSliderArray*, RE::RaceMenuSlider*)>(0x008E9850)(a_sliders, a_slider);
+			return VRFunction<std::int32_t (*)(RE::RaceMenuSliderArray*, RE::RaceMenuSlider*)>(SKEE::VR::Address::AddSlider)(a_sliders, a_slider);
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return 0;
@@ -206,7 +216,7 @@ namespace SKEE
 	inline void DoubleMorphCallback(RE::RaceSexMenu* a_menu, float a_newValue, std::uint32_t a_sliderId)
 	{
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::RaceSexMenu*, float, std::uint32_t)>(0x008E23B0)(a_menu, a_newValue, a_sliderId);
+			VRFunction<void (*)(RE::RaceSexMenu*, float, std::uint32_t)>(SKEE::VR::Address::DoubleMorph)(a_menu, a_newValue, a_sliderId);
 			return;
 		}
 		if (!HasQualifiedCustomAddresses()) {
@@ -230,7 +240,7 @@ namespace SKEE
 	inline void NiTriBasedGeomCtor(RE::NiAVObject* a_this, RE::NiGeometryData* a_data)
 	{
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::NiAVObject*, RE::NiGeometryData*)>(0x00CC7420)(a_this, a_data);
+			VRFunction<void (*)(RE::NiAVObject*, RE::NiGeometryData*)>(SKEE::VR::Address::NiTriBasedGeomCtor)(a_this, a_data);
 			return;
 		}
 		if (!HasQualifiedCustomAddresses()) {
@@ -243,7 +253,7 @@ namespace SKEE
 	inline RE::BSTriShape* CreateBSTriShape()
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<RE::BSTriShape* (*)()>(0x00CAD6D0)();
+			return VRFunction<RE::BSTriShape* (*)()>(SKEE::VR::Address::CreateBSTriShape)();
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return nullptr;
@@ -255,7 +265,7 @@ namespace SKEE
 	inline RE::BSDynamicTriShape* CreateBSDynamicTriShape()
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<RE::BSDynamicTriShape* (*)()>(0x00CB8530)();
+			return VRFunction<RE::BSDynamicTriShape* (*)()>(SKEE::VR::Address::CreateBSDynamicTriShape)();
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return nullptr;
@@ -298,7 +308,7 @@ namespace SKEE
 			return false;
 		}
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::NiStream*, RE::NiObject*)>(0x00C9F090)(a_this, a_object);
+			VRFunction<void (*)(RE::NiStream*, RE::NiObject*)>(SKEE::VR::Address::NiStreamAddObject)(a_this, a_object);
 			return true;
 		}
 		static REL::Relocation<void (*)(RE::NiStream*, RE::NiObject*)> func{ REL::RelocationID(0, kID_NiStreamAddObject) };
@@ -309,7 +319,7 @@ namespace SKEE
 	inline RE::BSFadeNode* BSFadeNodeCtor(RE::BSFadeNode* a_this)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<RE::BSFadeNode* (*)(RE::BSFadeNode*)>(0x012C8230)(a_this);
+			return VRFunction<RE::BSFadeNode* (*)(RE::BSFadeNode*)>(SKEE::VR::Address::BSFadeNodeCtor)(a_this);
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return nullptr;
@@ -321,7 +331,7 @@ namespace SKEE
 	inline RE::NiSourceTexture* CreateSourceTexture(const RE::BSFixedString& a_name)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<RE::NiSourceTexture* (*)(const RE::BSFixedString&)>(0x00CAEF60)(a_name);
+			return VRFunction<RE::NiSourceTexture* (*)(const RE::BSFixedString&)>(SKEE::VR::Address::CreateSourceTexture)(a_name);
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return nullptr;
@@ -352,7 +362,7 @@ namespace SKEE
 	inline void InventoryChanges_SetUniqueID(RE::InventoryChanges* a_this, RE::ExtraDataList* a_extraList, RE::TESForm* a_oldForm, RE::TESForm* a_newForm)
 	{
 		if (REL::Module::IsVR()) {
-			VRFunction<void (*)(RE::InventoryChanges*, RE::ExtraDataList*, RE::TESForm*, RE::TESForm*)>(0x001FD7D0)(a_this, a_extraList, a_oldForm, a_newForm);
+			VRFunction<void (*)(RE::InventoryChanges*, RE::ExtraDataList*, RE::TESForm*, RE::TESForm*)>(SKEE::VR::Address::SetUniqueID)(a_this, a_extraList, a_oldForm, a_newForm);
 			return;
 		}
 		if (!HasQualifiedCustomAddresses()) {
@@ -367,7 +377,7 @@ namespace SKEE
 	inline void* GFxInvokeFunction(RE::GFxMovieView* a_movie, const char* a_fnName, RE::FxResponseArgsBase& a_arguments)
 	{
 		if (REL::Module::IsVR()) {
-			return VRFunction<void* (*)(RE::GFxMovieView*, const char*, RE::FxResponseArgsBase*)>(0x00F342E0)(a_movie, a_fnName, std::addressof(a_arguments));
+			return VRQualifiedFunctionRVA<void* (*)(RE::GFxMovieView*, const char*, RE::FxResponseArgsBase*)>(0x00F342E0)(a_movie, a_fnName, std::addressof(a_arguments));
 		}
 		if (!HasQualifiedCustomAddresses()) {
 			return nullptr;

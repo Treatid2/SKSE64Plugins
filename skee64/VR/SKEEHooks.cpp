@@ -278,10 +278,10 @@ namespace SKEE
 			};
 			auto validate = [textBegin, textEnd, &recognizeEntryDetour]<std::size_t N>(
 				std::string_view a_name,
-				std::uintptr_t a_rva,
+				std::uintptr_t a_address,
 				const std::array<std::uint8_t, N>& a_expected,
 				bool a_allowEntryDetour = false) {
-				const auto address = REL::Offset(a_rva).address();
+				const auto address = a_address;
 				const bool inside = address >= textBegin && address <= textEnd &&
 					a_expected.size() <= textEnd - address;
 				if (inside && std::memcmp(reinterpret_cast<const void*>(address), a_expected.data(), a_expected.size()) == 0) {
@@ -293,7 +293,7 @@ namespace SKEE
 				SKSE::log::critical(
 					"SkyrimVR helper {} failed 1.4.15 qualification at RVA 0x{:X}{}",
 					a_name,
-					a_rva,
+					a_address - REL::Module::get().base(),
 					a_allowEntryDetour ? " (neither the original entry nor a supported executable detour was present)" : "");
 				return false;
 			};
@@ -303,60 +303,60 @@ namespace SKEE
 			// They protect locally implemented RaceMenu NG calls; no SKEEVR code or
 			// binary is used to define the functions or their behavior.
 			return
-				validate("BSLightingShaderProperty::InitializeShader", 0x01303AC0,
+				validate("BSLightingShaderProperty::InitializeShader", SKEE::VR::Address::InitializeShader.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x5C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x10 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x6C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x18 }, std::uint8_t{ 0x56 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x56 } }) &&
-				validate("BSLightingShaderMaterial::CopyFrom", 0x0130DE50,
+				validate("BSLightingShaderMaterial::CopyFrom", SKEE::VR::Address::CopyFrom.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x5C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x10 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x74 }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x18 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x20 } }) &&
-				validate("TaskQueueInterface::SetNiGeometryTexture", 0x005CF190,
+				validate("TaskQueueInterface::SetNiGeometryTexture", SKEE::VR::Address::SetNiGeometryTexture.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x53 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x81 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0xB0 }, std::uint8_t{ 0x00 }, std::uint8_t{ 0x00 }, std::uint8_t{ 0x00 } }) &&
-				validate("BSFaceGenManager::ApplyMorph", 0x003E1B80,
+				validate("BSFaceGenManager::ApplyMorph", SKEE::VR::Address::ApplyMorph.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x5C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x10 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x6C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x18 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x7C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x20 }, std::uint8_t{ 0x41 } }) &&
-				validate("BSFaceGenManager::ApplyMorphByPart", 0x003E1CE0,
+				validate("BSFaceGenManager::ApplyMorphByPart", SKEE::VR::Address::ApplyMorphByPart.address(),
 					std::array{ std::uint8_t{ 0x4D }, std::uint8_t{ 0x85 }, std::uint8_t{ 0xC0 }, std::uint8_t{ 0x0F }, std::uint8_t{ 0x84 }, std::uint8_t{ 0x3E }, std::uint8_t{ 0x01 }, std::uint8_t{ 0x00 }, std::uint8_t{ 0x00 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x50 } }) &&
-				validate("BSFaceGenModel::ApplyRaceMorph", 0x003E3FA0,
+				validate("BSFaceGenModel::ApplyRaceMorph", SKEE::VR::Address::ApplyRaceMorph.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x56 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x56 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x40 } }) &&
-				validate("UpdateNPCMorphs", 0x00370140,
+				validate("UpdateNPCMorphs", SKEE::VR::Address::UpdateNPCMorphs.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x8B }, std::uint8_t{ 0xC4 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x56 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x81 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x80 }, std::uint8_t{ 0x01 }, std::uint8_t{ 0x00 }, std::uint8_t{ 0x00 } }) &&
-				validate("UpdateNPCMorph", 0x00370330,
+				validate("UpdateNPCMorph", SKEE::VR::Address::UpdateNPCMorph.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x8B }, std::uint8_t{ 0xC4 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x56 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x81 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x80 }, std::uint8_t{ 0x01 }, std::uint8_t{ 0x00 }, std::uint8_t{ 0x00 } }) &&
-				validate("UpdateHeadState", 0x003727B0,
+				validate("UpdateHeadState", SKEE::VR::Address::UpdateHeadState.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x56 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x57 } }) &&
-				validate("Actor::ChangeHeadPart", 0x003EBD30,
+				validate("Actor::ChangeHeadPart", SKEE::VR::Address::ChangeHeadPart.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x5C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x10 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x74 }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x18 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x20 } },
 					true) &&
-				validate("UpdateModelFace", 0x003EB710,
+				validate("UpdateModelFace", SKEE::VR::Address::UpdateModelFace.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x28 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x8D }, std::uint8_t{ 0x54 }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x38 }, std::uint8_t{ 0xC6 }, std::uint8_t{ 0x44 }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x38 }, std::uint8_t{ 0x01 } }) &&
-				validate("UpdateModelSkin", 0x003EC090,
+				validate("UpdateModelSkin", SKEE::VR::Address::UpdateModelSkin.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x54 }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x10 }, std::uint8_t{ 0x53 } }) &&
-				validate("UpdateModelHair", 0x003EC150,
+				validate("UpdateModelHair", SKEE::VR::Address::UpdateModelHair.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x54 }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x10 }, std::uint8_t{ 0x53 } }) &&
-				validate("AddRaceMenuSlider", 0x008E9850,
+				validate("AddRaceMenuSlider", SKEE::VR::Address::AddSlider.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x40 } }) &&
-				validate("DoubleMorphCallback", 0x008E23B0,
+				validate("DoubleMorphCallback", SKEE::VR::Address::DoubleMorph.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x8B }, std::uint8_t{ 0xC4 }, std::uint8_t{ 0x56 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x54 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x56 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x57 } }) &&
-				validate("RaceSexMenu::LoadSliders", 0x008E39B0,
+				validate("RaceSexMenu::LoadSliders", SKEE::VR::Address::LoadSliders.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x8B }, std::uint8_t{ 0xC4 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x50 }, std::uint8_t{ 0x10 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x08 } }) &&
-				validate("NiTriBasedGeom::ctor", 0x00CC7420,
+				validate("NiTriBasedGeom::ctor", SKEE::VR::Address::NiTriBasedGeomCtor.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x4C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x08 }, std::uint8_t{ 0x55 }, std::uint8_t{ 0x56 }, std::uint8_t{ 0x57 } }) &&
-				validate("CreateBSTriShape", 0x00CAD6D0,
+				validate("CreateBSTriShape", SKEE::VR::Address::CreateBSTriShape.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x30 } }) &&
-				validate("CreateBSDynamicTriShape", 0x00CB8530,
+				validate("CreateBSDynamicTriShape", SKEE::VR::Address::CreateBSDynamicTriShape.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x30 } }) &&
-				validate("NiStream::ctor", 0x00C9EC40,
+				validate("NiStream::ctor", SKEE::VR::Address::NiStreamCtor.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x4C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x08 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x40 } }) &&
-				validate("NiStream::dtor", 0x00C9EEA0,
+				validate("NiStream::dtor", SKEE::VR::Address::NiStreamDtor.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x30 } }) &&
-				validate("NiStream::AddObject", 0x00C9F090,
+				validate("NiStream::AddObject", SKEE::VR::Address::NiStreamAddObject.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x30 } }) &&
-				validate("BSFadeNode::ctor", 0x012C8230,
+				validate("BSFadeNode::ctor", SKEE::VR::Address::BSFadeNodeCtor.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x53 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x20 } }) &&
-				validate("CreateSourceTexture", 0x00CAEF60,
+				validate("CreateSourceTexture", SKEE::VR::Address::CreateSourceTexture.address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x30 } }) &&
-				validate("SetNewInventoryItemModel", 0x008B5B40,
+				validate("SetNewInventoryItemModel", SKEE::VR::Address::InitializeDisplayObject.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x5C }, std::uint8_t{ 0x24 }, std::uint8_t{ 0x10 }, std::uint8_t{ 0x55 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x41 }, std::uint8_t{ 0x56 } }) &&
-				validate("InventoryChanges::SetUniqueID", 0x001FD7D0,
+				validate("InventoryChanges::SetUniqueID", SKEE::VR::Address::SetUniqueID.address(),
 					std::array{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x85 }, std::uint8_t{ 0xD2 }, std::uint8_t{ 0x0F }, std::uint8_t{ 0x84 }, std::uint8_t{ 0xC0 }, std::uint8_t{ 0x00 }, std::uint8_t{ 0x00 }, std::uint8_t{ 0x00 } }) &&
-				validate("FxDelegate::Invoke target", 0x00F342E0,
+				validate("FxDelegate::Invoke target", REL::Offset(0x00F342E0).address(),
 					std::array{ std::uint8_t{ 0x40 }, std::uint8_t{ 0x57 }, std::uint8_t{ 0x48 }, std::uint8_t{ 0x83 }, std::uint8_t{ 0xEC }, std::uint8_t{ 0x40 } });
 		}();
 
@@ -1689,9 +1689,9 @@ namespace
 	struct VRCallPatch
 	{
 		std::string_view name;
-		std::uintptr_t rva;
+		std::uintptr_t address;
 		std::uintptr_t hook;
-		std::uintptr_t expectedTargetRva;
+		std::uintptr_t expectedTarget;
 	};
 
 	[[nodiscard]] bool IsVRTextAddress(std::uintptr_t a_address, std::size_t a_size = 1)
@@ -1702,23 +1702,23 @@ namespace
 
 	[[nodiscard]] bool ValidateVRCallPatch(const VRCallPatch& a_patch, std::uintptr_t* a_decodedTarget = nullptr)
 	{
-		const auto address = REL::Offset(a_patch.rva).address();
+		const auto address = a_patch.address;
 		if (!IsVRTextAddress(address, 5)) {
-			SKSE::log::error("VR hook {} is outside SkyrimVR.exe .text: RVA=0x{:X}", a_patch.name, a_patch.rva);
+			SKSE::log::error("VR hook {} is outside SkyrimVR.exe .text: RVA=0x{:X}", a_patch.name, a_patch.address - REL::Module::get().base());
 			return false;
 		}
 		if (*reinterpret_cast<const std::uint8_t*>(address) != 0xE8) {
-			SKSE::log::error("VR hook {} expected CALL at RVA 0x{:X}, observed opcode 0x{:02X}", a_patch.name, a_patch.rva, *reinterpret_cast<const std::uint8_t*>(address));
+			SKSE::log::error("VR hook {} expected CALL at RVA 0x{:X}, observed opcode 0x{:02X}", a_patch.name, a_patch.address - REL::Module::get().base(), *reinterpret_cast<const std::uint8_t*>(address));
 			return false;
 		}
 		const auto displacement = *reinterpret_cast<const std::int32_t*>(address + 1);
 		const auto target = address + 5 + displacement;
-		const auto expectedTarget = REL::Offset(a_patch.expectedTargetRva).address();
+		const auto expectedTarget = a_patch.expectedTarget;
 		if (!IsVRTextAddress(target) || target != expectedTarget) {
 			SKSE::log::error(
 				"VR hook {} original target mismatch at RVA 0x{:X}: decoded=0x{:X}, expected=0x{:X}",
 				a_patch.name,
-				a_patch.rva,
+				a_patch.address - REL::Module::get().base(),
 				target,
 				expectedTarget);
 			return false;
@@ -1746,9 +1746,9 @@ namespace
 	void CommitVRCallPatches(const std::array<VRCallPatch, N>& a_patches)
 	{
 		for (const auto& patch : a_patches) {
-			const auto address = REL::Offset(patch.rva).address();
+			const auto address = patch.address;
 			g_branchTrampoline.write_call<5>(address, patch.hook);
-			SKSE::log::info("VR hook {} installed at RVA 0x{:X}", patch.name, patch.rva);
+			SKSE::log::info("VR hook {} installed at RVA 0x{:X}", patch.name, patch.address - REL::Module::get().base());
 		}
 	}
 
@@ -1761,21 +1761,21 @@ namespace
 			return { "native-face-sliders", SKEEHookStatus::kInitializationFailed, "slider trampolines could not be allocated" };
 		}
 
-		constexpr std::uintptr_t loadSliders = 0x008E39B0;
+		const auto loadSliders = SKEE::VR::Address::LoadSliders.address();
 		const std::array patches{
-			VRCallPatch{ "head-part-list", loadSliders + 0x215, reinterpret_cast<std::uintptr_t>(GetHeadParts_Hooked), 0x00175DA0 },
-			VRCallPatch{ "slider-category-list", 0x008E2DC0 + 0x9FB, reinterpret_cast<std::uintptr_t>(InvokeCategoryList_Hook), 0x00F342E0 },
-			VRCallPatch{ "add-native-slider", loadSliders + 0x37E4, reinterpret_cast<std::uintptr_t>(AddSlider_Hook), 0x008E9850 },
-			VRCallPatch{ "double-morph-primary", loadSliders + 0x3CD5, reinterpret_cast<std::uintptr_t>(DoubleMorphCallback_Hook), 0x008E23B0 },
-			VRCallPatch{ "double-morph-secondary", 0x008DF4E0 + 0x4F, reinterpret_cast<std::uintptr_t>(DoubleMorphCallback_Hook), 0x008E23B0 }
+			VRCallPatch{ "head-part-list", loadSliders + 0x215, reinterpret_cast<std::uintptr_t>(GetHeadParts_Hooked), REL::Offset(0x00175DA0).address() },
+			VRCallPatch{ "slider-category-list", REL::Offset(0x008E2DC0).address() + 0x9FB, reinterpret_cast<std::uintptr_t>(InvokeCategoryList_Hook), REL::Offset(0x00F342E0).address() },
+			VRCallPatch{ "add-native-slider", loadSliders + 0x37E4, reinterpret_cast<std::uintptr_t>(AddSlider_Hook), SKEE::VR::Address::AddSlider.address() },
+			VRCallPatch{ "double-morph-primary", loadSliders + 0x3CD5, reinterpret_cast<std::uintptr_t>(DoubleMorphCallback_Hook), SKEE::VR::Address::DoubleMorph.address() },
+			VRCallPatch{ "double-morph-secondary", REL::Offset(0x008DF4E0).address() + 0x4F, reinterpret_cast<std::uintptr_t>(DoubleMorphCallback_Hook), SKEE::VR::Address::DoubleMorph.address() }
 		};
-		const auto lookupSite = REL::Offset(loadSliders + 0x3895).address();
+		const auto lookupSite = loadSliders + 0x3895;
 		constexpr std::array expectedLookup{ std::uint8_t{ 0x48 }, std::uint8_t{ 0x8B }, std::uint8_t{ 0x4C }, std::uint8_t{ 0x18 }, std::uint8_t{ 0x18 } };
 		std::array<std::uintptr_t, patches.size()> originalTargets{};
 		if (!ValidateVRCallPatches(patches, originalTargets) ||
 			!IsVRTextAddress(lookupSite, expectedLookup.size()) ||
 			std::memcmp(reinterpret_cast<const void*>(lookupSite), expectedLookup.data(), expectedLookup.size()) != 0) {
-			SKSE::log::error("VR slider lookup signature mismatch at RVA 0x{:X}", loadSliders + 0x3895);
+			SKSE::log::error("VR slider lookup signature mismatch at RVA 0x{:X}", loadSliders + 0x3895 - REL::Module::get().base());
 			return { "native-face-sliders", SKEEHookStatus::kSignatureMismatch, "one or more established SkyrimVR 1.4.15 slider sites or targets did not match" };
 		}
 
@@ -1824,7 +1824,7 @@ namespace
 		const auto site1 = REL::Offset(preprocessing + 0x58).address();
 		const auto site2 = REL::Offset(preprocessing + 0x81).address();
 		const auto site3 = REL::Offset(preprocessing + 0x67).address();
-		const auto regenerate = REL::Offset(0x003E23D0).address();
+		const auto regenerate = SKEE::VR::Address::RegenerateHead.address();
 		constexpr std::array site1Expected{
 			std::uint8_t{ 0x0F }, std::uint8_t{ 0xB6 }, std::uint8_t{ 0x0D },
 			std::uint8_t{ 0x11 }, std::uint8_t{ 0x3A }, std::uint8_t{ 0xB3 },
@@ -1912,10 +1912,10 @@ namespace
 		}
 
 		std::array<VRCallPatch, 4> patches{
-			VRCallPatch{ "chargen-morph", 0x003E1CE0 + 0xF3, reinterpret_cast<std::uintptr_t>(ApplyChargenMorph_Hooked), 0x003E3FA0 },
-			VRCallPatch{ "race-morph", 0x003E3F20 + 0x56, reinterpret_cast<std::uintptr_t>(ApplyRaceMorph_Hooked), 0x003E3FA0 },
-			VRCallPatch{ "update-all-morphs", 0x003E1E50 + 0xC7, reinterpret_cast<std::uintptr_t>(UpdateMorphs_Hooked), 0x00370140 },
-			VRCallPatch{ "update-one-morph", 0x003EBB30 + 0x79, reinterpret_cast<std::uintptr_t>(UpdateMorph_Hooked), 0x00370330 }
+			VRCallPatch{ "chargen-morph", SKEE::VR::Address::ApplyMorphByPart.address() + 0xF3, reinterpret_cast<std::uintptr_t>(ApplyChargenMorph_Hooked), SKEE::VR::Address::ApplyRaceMorph.address() },
+			VRCallPatch{ "race-morph", REL::Offset(0x003E3F20).address() + 0x56, reinterpret_cast<std::uintptr_t>(ApplyRaceMorph_Hooked), SKEE::VR::Address::ApplyRaceMorph.address() },
+			VRCallPatch{ "update-all-morphs", REL::Offset(0x003E1E50).address() + 0xC7, reinterpret_cast<std::uintptr_t>(UpdateMorphs_Hooked), SKEE::VR::Address::UpdateNPCMorphs.address() },
+			VRCallPatch{ "update-one-morph", SKEE::VR::Address::UpdateOneMorphCaller.address() + 0x79, reinterpret_cast<std::uintptr_t>(UpdateMorph_Hooked), SKEE::VR::Address::UpdateNPCMorph.address() }
 		};
 		if (!g_extendedMorphs) {
 			patches[0].hook = 0;
@@ -1935,8 +1935,8 @@ namespace
 		}
 		for (const auto& patch : patches) {
 			if (patch.hook) {
-				g_branchTrampoline.write_call<5>(REL::Offset(patch.rva).address(), patch.hook);
-				SKSE::log::info("VR hook {} installed at RVA 0x{:X}", patch.name, patch.rva);
+				g_branchTrampoline.write_call<5>(patch.address, patch.hook);
+				SKSE::log::info("VR hook {} installed at RVA 0x{:X}", patch.name, patch.address - REL::Module::get().base());
 			}
 		}
 		return { "face-morph-application", SKEEHookStatus::kEnabled, g_extendedMorphs ? "custom TRI application and per-head morph updates are installed" : "per-head morph updates are installed; extended TRI application is disabled by configuration" };
@@ -1951,7 +1951,7 @@ namespace
 			return { "sculpt-rendering", SKEEHookStatus::kUnavailableAddress, "the RaceSexMenu render vtable slot is unavailable" };
 		}
 		const auto original = *reinterpret_cast<const std::uintptr_t*>(slot);
-		const auto expectedOriginal = REL::Offset(0x0052EDE0).address();
+		const auto expectedOriginal = SKEE::VR::Address::RenderMenu.address();
 		if (!IsVRTextAddress(original) || original != expectedOriginal) {
 			SKSE::log::error(
 				"VR RaceSexMenu render vtable target mismatch: observed=0x{:X}, expected=0x{:X}",
@@ -1978,17 +1978,17 @@ namespace
 		// use the refcount-aware pair; otherwise an assignment or the virtual
 		// deleting destructor can pass the interior data pointer to NiFree.
 		const std::array patches{
-			VRCallPatch{ "face-overlay-free-copy", 0x00CB82B0 + 0x8B, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), 0x00C698E0 },
-			VRCallPatch{ "face-overlay-allocate-copy", 0x00CB82B0 + 0x92, reinterpret_cast<std::uintptr_t>(NiAllocate_Hooked), 0x00C69680 },
-			VRCallPatch{ "face-overlay-free-assignment", 0x00CB8390 + 0x65, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), 0x00C698E0 },
-			VRCallPatch{ "face-overlay-allocate-assignment", 0x00CB8390 + 0x6C, reinterpret_cast<std::uintptr_t>(NiAllocate_Hooked), 0x00C69680 },
-			VRCallPatch{ "face-overlay-allocate-constructor", 0x00CB8600 + 0x76, reinterpret_cast<std::uintptr_t>(NiAllocate_Hooked), 0x00C69680 },
-			VRCallPatch{ "face-overlay-free-destructor", 0x00CB8700 + 0x28, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), 0x00C698E0 },
-			VRCallPatch{ "face-overlay-free-resize", 0x00CB8800 + 0x4E, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), 0x00C698E0 },
-			VRCallPatch{ "face-overlay-allocate-resize", 0x00CB8800 + 0x55, reinterpret_cast<std::uintptr_t>(NiAllocate_Hooked), 0x00C69680 },
-			VRCallPatch{ "face-overlay-free-deleting-destructor", 0x00CB9000 + 0x3F, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), 0x00C698E0 },
-			VRCallPatch{ "face-overlay-enable", 0x00373880 + 0x1E0, reinterpret_cast<std::uintptr_t>(UpdateHeadState_Enable_Hooked), 0x003727B0 },
-			VRCallPatch{ "face-overlay-disable", 0x00372920 + 0x1DF, reinterpret_cast<std::uintptr_t>(UpdateHeadState_Disabled_Hooked), 0x003727B0 }
+			VRCallPatch{ "face-overlay-free-copy", REL::Offset(0x00CB82B0).address() + 0x8B, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), REL::Offset(0x00C698E0).address() },
+			VRCallPatch{ "face-overlay-allocate-copy", REL::Offset(0x00CB82B0).address() + 0x92, reinterpret_cast<std::uintptr_t>(NiAllocate_Hooked), REL::Offset(0x00C69680).address() },
+			VRCallPatch{ "face-overlay-free-assignment", REL::Offset(0x00CB8390).address() + 0x65, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), REL::Offset(0x00C698E0).address() },
+			VRCallPatch{ "face-overlay-allocate-assignment", REL::Offset(0x00CB8390).address() + 0x6C, reinterpret_cast<std::uintptr_t>(NiAllocate_Hooked), REL::Offset(0x00C69680).address() },
+			VRCallPatch{ "face-overlay-allocate-constructor", REL::Offset(0x00CB8600).address() + 0x76, reinterpret_cast<std::uintptr_t>(NiAllocate_Hooked), REL::Offset(0x00C69680).address() },
+			VRCallPatch{ "face-overlay-free-destructor", REL::Offset(0x00CB8700).address() + 0x28, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), REL::Offset(0x00C698E0).address() },
+			VRCallPatch{ "face-overlay-free-resize", REL::Offset(0x00CB8800).address() + 0x4E, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), REL::Offset(0x00C698E0).address() },
+			VRCallPatch{ "face-overlay-allocate-resize", REL::Offset(0x00CB8800).address() + 0x55, reinterpret_cast<std::uintptr_t>(NiAllocate_Hooked), REL::Offset(0x00C69680).address() },
+			VRCallPatch{ "face-overlay-free-deleting-destructor", REL::Offset(0x00CB9000).address() + 0x3F, reinterpret_cast<std::uintptr_t>(NiFree_Hooked), REL::Offset(0x00C698E0).address() },
+			VRCallPatch{ "face-overlay-enable", SKEE::VR::Address::EnableHead.address() + 0x1E0, reinterpret_cast<std::uintptr_t>(UpdateHeadState_Enable_Hooked), SKEE::VR::Address::UpdateHeadState.address() },
+			VRCallPatch{ "face-overlay-disable", SKEE::VR::Address::DisableHead.address() + 0x1DF, reinterpret_cast<std::uintptr_t>(UpdateHeadState_Disabled_Hooked), SKEE::VR::Address::UpdateHeadState.address() }
 		};
 		std::array<std::uintptr_t, patches.size()> originalTargets{};
 		if (!ValidateVRCallPatches(patches, originalTargets)) {
@@ -2007,10 +2007,10 @@ namespace
 
 		const bool installTint = g_hookTinting && g_enableTintSync;
 		const bool installInventory = g_hookTintInventory && g_enableTintInventory;
-		const auto skin = REL::Offset(0x003EC090).address();
-		const auto hair = REL::Offset(0x003EC150).address();
+		const auto skin = SKEE::VR::Address::UpdateModelSkin.address();
+		const auto hair = SKEE::VR::Address::UpdateModelHair.address();
 		const auto setModel = REL::Offset(0x008B60A0).address();
-		const auto transfer = REL::Offset(0x001FD990).address();
+		const auto transfer = SKEE::VR::Address::TransferUID.address();
 		constexpr std::array tintProlog{
 			std::uint8_t{ 0x48 }, std::uint8_t{ 0x89 }, std::uint8_t{ 0x54 },
 			std::uint8_t{ 0x24 }, std::uint8_t{ 0x10 }, std::uint8_t{ 0x53 }
@@ -2035,9 +2035,9 @@ namespace
 
 		const VRCallPatch newModel{
 			"new-inventory-model",
-			0x008B6220 + 0x1B0,
+			REL::Offset(0x008B6220).address() + 0x1B0,
 			reinterpret_cast<std::uintptr_t>(InitializeDisplayObject_Hooked),
-			0x008B5B40
+			SKEE::VR::Address::InitializeDisplayObject.address()
 		};
 		std::uintptr_t newModelOriginal = 0;
 		if (installInventory &&
@@ -2101,7 +2101,7 @@ namespace
 			// The displaced instruction is exactly five bytes; resuming at +6 would
 			// enter the middle of the following mov [rsp+0x20],rsi instruction.
 			g_branchTrampoline.write_branch<5>(setModel, reinterpret_cast<std::uintptr_t>(SetInventoryItemModel_Hooked));
-			g_branchTrampoline.write_call<5>(REL::Offset(newModel.rva).address(), newModel.hook);
+			g_branchTrampoline.write_call<5>(newModel.address, newModel.hook);
 		}
 		TransferItemUID_Original = reinterpret_cast<TransferItemUIDFn>(transferEntry);
 		g_branchTrampoline.write_branch<6>(transfer, reinterpret_cast<std::uintptr_t>(TransferItemUID_Hooked));
