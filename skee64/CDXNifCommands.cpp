@@ -303,7 +303,7 @@ void CRGNUITaskStandardCommand::Run()
 		obj.SetMember("part", partName);
 		RE::GFxValue args[1] = { obj };
 #if defined(ENABLE_SKYRIM_VR)
-		SKEE::DispatchSculptHistory(true, obj, [&](const char* path, RE::GFxValue* values, std::uint32_t count) {
+		SKEE::DispatchSculptHistory(true, obj, [&](const char* path, const RE::GFxValue* values, std::uint32_t count) {
 			return menu->uiMovie->Invoke(path, nullptr, values, count);
 		});
 #else
