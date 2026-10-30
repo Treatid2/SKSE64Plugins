@@ -1635,7 +1635,8 @@ namespace papyrusNiOverride
 				return false;
 
 			m_filter.clear();
-			m_filter.reserve(size);
+			// Grow only as strings are successfully decoded. The record's count
+			// must not reserve an unbounded allocation before payload validation.
 
 			for (std::uint32_t i = 0; i < size; ++i)
 			{
