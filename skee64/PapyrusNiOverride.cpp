@@ -1602,7 +1602,7 @@ namespace papyrusNiOverride
 			if (!WriteData(intfc, &m_replace))
 				return false;
 			std::uint32_t size = static_cast<std::uint32_t>(m_filter.size());
-			if (WriteData(intfc, &size))
+			if (!WriteData(intfc, &size))
 				return false;
 			for (size_t i = 0; i < m_filter.size(); ++i)
 			{
@@ -1631,7 +1631,7 @@ namespace papyrusNiOverride
 			if (!ReadData(intfc, &m_replace))
 				return false;
 			std::uint32_t size = 0;
-			if (ReadData(intfc, &size))
+			if (!ReadData(intfc, &size))
 				return false;
 
 			m_filter.clear();
@@ -1647,12 +1647,16 @@ namespace papyrusNiOverride
 			}
 
 			std::uint32_t newFormId;
-			if (!ResolveAnyForm(intfc, formId, &newFormId))
+			if (!ResolveAnyForm(intfc, formId, &newFormId)) {
 				m_ref = nullptr;
+				return false;
+			}
 
 			RE::TESForm* form = RE::TESForm::LookupByID(newFormId);
-			if (!form || (form->IsNot(RE::FormType::ActorCharacter) && form->IsNot(RE::FormType::Reference)))
+			if (!form || (form->IsNot(RE::FormType::ActorCharacter) && form->IsNot(RE::FormType::Reference))) {
 				m_ref = nullptr;
+				return false;
+			}
 
 			m_ref = static_cast<RE::TESObjectREFR*>(form);
 			return true;
@@ -1733,7 +1737,8 @@ namespace papyrusNiOverride
 
 			if (!LatentSKSEDelayFunctor::Save(intfc))
 				return false;
-			if (!WriteData(intfc, &m_ref->formID))
+			const std::uint32_t formId = m_ref ? m_ref->formID : 0;
+			if (!WriteData(intfc, &formId))
 				return false;
 			if (!WriteData(intfc, &m_isFirstPerson))
 				return false;
@@ -1758,12 +1763,16 @@ namespace papyrusNiOverride
 				return false;
 
 			std::uint32_t newFormId;
-			if (!ResolveAnyForm(intfc, formId, &newFormId))
+			if (!ResolveAnyForm(intfc, formId, &newFormId)) {
 				m_ref = nullptr;
+				return false;
+			}
 
 			RE::TESForm* form = RE::TESForm::LookupByID(newFormId);
-			if (!form || form->IsNot(RE::FormType::ActorCharacter))
+			if (!form || form->IsNot(RE::FormType::ActorCharacter)) {
 				m_ref = nullptr;
+				return false;
+			}
 
 			m_ref = static_cast<RE::TESObjectREFR*>(form);
 			return true;
