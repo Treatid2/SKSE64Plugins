@@ -1,4 +1,5 @@
 #include "SKSE/API.h"
+#include <cmath>
 #include <REX/W32/KERNEL32.h>
 #include "SKSE/Interfaces.h"
 #include "SKSE/Trampoline.h"
@@ -154,6 +155,12 @@ namespace
 		};
 
 		bool appliedAll = true;
+		for (const auto& requested : placementSettings) {
+			if (!std::isfinite(requested.value)) {
+				SKSE::log::error("RaceSexMenu VR placement setting '{}' is non-finite; keeping existing engine offsets",requested.name);
+				return false;
+			}
+		}
 		for (const auto& requested : placementSettings) {
 			auto* setting = settings->GetSetting(requested.name);
 			if (!setting || setting->GetType() != RE::Setting::Type::kFloat) {
@@ -941,7 +948,7 @@ SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* a_intfc)
     g_task = SKSE::GetTaskInterface();
 
 	SKSE::log::info(
-		"RaceMenu NG VR 2 build identity: package={}, native={}, runtime={}, SKSE=0x{:08X}, CommonLibSSE-NG={}, VR Address Library={}",
+		"RaceMenu NG VR 2 build identity: package={}, native={}, runtime={}, SKSE=0x{:08X}, CommonLibSSE-NG={}, VR Address Library={} (qualification baseline; not an installed-version probe)",
 		SKEE_VR2_PACKAGE_VERSION_STRING,
 		SKEE_NATIVE_PLUGIN_VERSION_STRING,
 		a_intfc->RuntimeVersion().string("."),

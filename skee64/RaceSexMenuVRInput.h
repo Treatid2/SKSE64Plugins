@@ -11,6 +11,9 @@ namespace SKEE::VR
 	// Skyrim has constructed it. Returns false while the VR node is unavailable.
 	bool ApplyRaceSexMenuWorldYaw();
 	void RestoreRaceSexMenuWorldTransform();
+	// Queue a read-only, generation-checked scene observation. It never forces
+	// cull flags or claims that the headset compositor displayed the movie.
+	void ObserveRaceSexMenuDisplay();
 
 	// Selects RaceSex Menu's VR-coordinate movie before construction completes,
 	// then hooks its own input handler so Trigger/Accept become Scaleform mouse

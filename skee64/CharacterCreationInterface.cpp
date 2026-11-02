@@ -1,6 +1,7 @@
 #include "CharacterCreationInterface.h"
 #include "CharacterNameUpdate.h"
 #include "RaceSexMenuFaceView.h"
+#include "RaceSexMenuVRInput.h"
 #include "CharacterInspectionControls.h"
 #include "AvatarLighting.h"
 #include "MenuConfiguration.h"
@@ -291,7 +292,12 @@ void CharacterCreationInterface::ProbeReady(std::uint32_t a_attempt)
 		state_.store(kReady);
 		ApplyConfiguredName();
 		Notify(kStateChanged);
+#if defined(ENABLE_SKYRIM_VR)
+		SKSE::log::info("Character-creation automation state: ready (menu open and movie present; headset visibility not measured)");
+		SKEE::VR::ObserveRaceSexMenuDisplay();
+#else
 		SKSE::log::info("Character-creation automation state: ready");
+#endif
 		return;
 	}
 

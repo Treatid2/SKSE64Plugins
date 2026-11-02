@@ -43,6 +43,7 @@
 #	include "VRMenuOptionsPolicy.h"
 #	include "VRHookTransactionPolicy.h"
 #	include "CooperativeRestorePolicy.h"
+#	include "VRDisplayPolicy.h"
 #	include "RaceSexMenuFaceView.h"
 #	include "RaceSexMenuSwfPatch.h"
 
@@ -92,7 +93,6 @@ namespace
 	RaceSexMenuLoadMovie_t  g_originalLoadMovie{ nullptr };
 	SKSE::Trampoline        g_loadMovieTrampoline{ "RaceSexMenu VR movie trampoline" };
 	bool                    g_installed{ false };
-	bool                    g_loggedMovieLoad{ false };
 	bool                    g_raceSexMenuWorldTransformEnabled{ true };
 	float                   g_raceSexMenuWorldScale{ 1.0F };
 	float                   g_raceSexMenuWorldYaw{ 180.0F };
@@ -128,8 +128,149 @@ namespace
 	RE::NiPointer<RE::NiNode> g_polarNodeParentIdentity;
 	RE::NiPointer<RE::NiNode> g_polarQuadParentIdentity;
 	std::atomic<unsigned> g_polarState{0}; // 0 pending, 1 applied, 2 unavailable
-	std::atomic<bool> g_polarQueued{false};
+	std::atomic<std::uint64_t> g_polarQueued{0};
 	std::atomic<std::uint64_t> g_polarGeneration{0};
+	std::atomic<std::uint64_t> g_displayTickets{0}, g_displayProbeQueued{0}, g_displayNextProbe{0};
+	std::atomic<unsigned> g_displaySuppressed{0};
+	SKEE::VR::DisplayPolicy::Readiness g_displayReadiness;
+	SKEE::VR::DisplayPolicy::LogBudget g_displayLogBudget;
+	std::uint64_t g_displayRuntimeGeneration{~0ULL}, g_polarCaptureGeneration{};
+	std::string g_displayLastObservation;
+	const char* g_displayPlacementReason{"not_requested"};
+	const char* g_displayLastWaitingReason{"none"};
+	SKEE::VR::DisplayPolicy::Request g_displayRequest{};
+	std::mutex g_displayReportMutex;
+	std::string g_displayReport{"{\"stage\":\"not_open\"}"};
+	bool Near(const RE::NiTransform&, const RE::NiTransform&);
+	bool IsCurrentRaceSexMovie(RE::GFxMovie*);
+
+	std::uint64_t DisplayMilliseconds()
+	{
+		return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count());
+	}
+	struct DisplayTicket
+	{
+		std::atomic<std::uint64_t>& slot;
+		std::uint64_t ticket;
+		~DisplayTicket() { SKEE::VR::DisplayPolicy::ReleaseTicket(slot,ticket); }
+	};
+	bool Finite(const RE::NiPoint3& p)
+	{
+		return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
+	}
+	bool Finite(const RE::NiTransform& t)
+	{
+		if (!Finite(t.translate) || !SKEE::VR::DisplayPolicy::PositiveScale(t.scale)) return false;
+		for (const auto& row : t.rotate.entry) for (const auto value : row) if (!std::isfinite(value)) return false;
+		return true;
+	}
+	unsigned HiddenAncestry(RE::NiAVObject* object)
+	{
+		unsigned depth=0;
+		for (; object && depth<128; object=object->parent,++depth) {
+			if (object->GetFlags().any(RE::NiAVObject::Flag::kHidden)) return 1;
+		}
+		return object ? 2 : 0; // 2 = ancestry depth/cycle limit, not a visibility verdict
+	}
+	void ResetDisplayBudget()
+	{
+		const auto generation = g_polarGeneration.load();
+		if (g_displayRuntimeGeneration == generation) return;
+		g_displayRuntimeGeneration = generation;
+		g_displayReadiness = {};
+		g_displayLogBudget = {};
+		g_displaySuppressed.store(0);
+		g_displayLastObservation.clear();
+		g_displayPlacementReason = g_raceSexMenuWorldTransformEnabled ? "not_requested" : "placement_disabled";
+		g_displayLastWaitingReason = "none";
+		g_displayRequest = {};
+	}
+	void DisplayObservation(const char* reason, bool warning, RE::GFxMovieView* expectedMovie, bool force = false) noexcept
+	{
+		try {
+			ResetDisplayBudget();
+			auto* ui = RE::UI::GetSingleton();
+			auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+			if (!menu || menu->uiMovie.get() != expectedMovie) return;
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			auto* nodes = player ? player->GetVRNodeData() : nullptr;
+			auto* node = nodes ? nodes->uiNode.get() : nullptr;
+			auto* quad = nodes ? nodes->InWorldUIQuadGeo.get() : nullptr;
+			auto* data = quad ? quad->GetGeometryRuntimeData().rendererData : nullptr;
+			const bool sameCapture = g_polarCaptured && g_polarCaptureGeneration == g_polarGeneration.load();
+			const bool nodeChanged = sameCapture && (node != g_polarNodeIdentity.get() || !node || node->parent != g_polarNodeParentIdentity.get());
+			const bool quadChanged = sameCapture && (quad != g_polarQuadIdentity.get() || !quad || quad->parent != g_polarQuadParentIdentity.get());
+			const bool poseChanged = sameCapture && !nodeChanged && !quadChanged &&
+				((g_polarNode.applied && !Near(node->local, g_polarNode.appliedLocal)) ||
+				 (!g_polarDescendant && g_polarQuad.applied && !Near(quad->local, g_polarQuad.appliedLocal)));
+			nlohmann::json facts{
+				{"movie", reinterpret_cast<std::uintptr_t>(expectedMovie)},
+				{"placementEnabled",g_raceSexMenuWorldTransformEnabled},
+				{"offscreen", menu->RendersOffscreenTargets()}, {"cursor", menu->UsesCursor()},
+				{"node", reinterpret_cast<std::uintptr_t>(node)}, {"quad", reinterpret_cast<std::uintptr_t>(quad)},
+				{"nodeParent", reinterpret_cast<std::uintptr_t>(node ? node->parent : nullptr)},
+				{"quadParent", reinterpret_cast<std::uintptr_t>(quad ? quad->parent : nullptr)},
+				{"nodeHidden", node && node->GetFlags().any(RE::NiAVObject::Flag::kHidden)},
+				{"quadHidden", quad && quad->GetFlags().any(RE::NiAVObject::Flag::kHidden)},
+				{"nodeHiddenAncestry", HiddenAncestry(node)}, {"quadHiddenAncestry", HiddenAncestry(quad)},
+				{"renderer", data != nullptr}, {"cpuVertices", data && data->rawVertexData},
+				{"shader", quad && quad->GetGeometryRuntimeData().shaderProperty.get()},
+				{"finiteNode", node && Finite(node->world)}, {"finiteQuad", quad && Finite(quad->world)},
+				{"nodeReplacedOrReparented", nodeChanged}, {"quadReplacedOrReparented", quadChanged},
+				{"externalLocalPoseChange", poseChanged}};
+			const bool probe = std::strcmp(reason,"scene_observed") == 0;
+			const bool reasonChanged = !probe && std::strcmp(reason,g_displayPlacementReason) != 0;
+			if (!probe) g_displayPlacementReason = reason;
+			if (!probe && g_polarState.load()==0) g_displayLastWaitingReason=reason;
+			const auto observation = facts.dump();
+			const bool changed = observation != g_displayLastObservation;
+			g_displayLastObservation = observation;
+			facts["session"] = g_polarGeneration.load();
+			facts["contractVersion"] = 1;
+			facts["placementState"] = g_polarState.load();
+			facts["reason"] = g_displayPlacementReason;
+			facts["lastWaitingReason"] = g_displayLastWaitingReason;
+			facts["observation"] = reason;
+			facts["attempts"] = g_displayReadiness.Attempts();
+			if (g_displayReadiness.Attempts()) facts["request"] = {
+				{"azimuth",g_displayRequest[0]}, {"elevation",g_displayRequest[1]}, {"distance",g_displayRequest[2]},
+				{"surfaceScalePercent",g_displayRequest[3]}, {"height",g_displayRequest[4]},
+				{"upright",g_displayRequest[5]!=0}, {"view",g_displayRequest[6]}};
+			facts["elapsedMs"] = g_displayReadiness.Elapsed(DisplayMilliseconds());
+			facts["headsetVisibility"] = "not_measured";
+			if (node && Finite(node->world)) facts["nodeWorld"] = {node->world.translate.x,node->world.translate.y,node->world.translate.z,node->world.scale};
+			if (quad && Finite(quad->world)) facts["quadWorld"] = {quad->world.translate.x,quad->world.translate.y,quad->world.translate.z,quad->world.scale};
+			const bool emit=(force || changed || reasonChanged) && g_displayLogBudget.Take();
+			g_displaySuppressed.store(g_displayLogBudget.Suppressed());
+			facts["suppressedObservations"]=g_displayLogBudget.Suppressed();
+			const auto text = facts.dump();
+			{ std::scoped_lock lock{g_displayReportMutex}; g_displayReport = text; }
+			if (emit) {
+				if (warning || nodeChanged || quadChanged || poseChanged) SKSE::log::warn("RaceMenu VR display: {}", text);
+				else SKSE::log::info("RaceMenu VR display: {}", text);
+			}
+		} catch (...) { /* Diagnostic allocation/formatting must not affect menu control. */ }
+	}
+	void QueueDisplayObservation(RE::GFxMovie* movie)
+	{
+		const auto now = DisplayMilliseconds();
+		if (now < g_displayNextProbe.load()) return;
+		auto* tasks = SKSE::GetTaskInterface();
+		if (!tasks) return;
+		const auto ticket = g_displayTickets.fetch_add(1) + 1;
+		std::uint64_t empty = 0;
+		if (!g_displayProbeQueued.compare_exchange_strong(empty, ticket)) return;
+		g_displayNextProbe.store(now + 500);
+		const auto generation = g_polarGeneration.load();
+		try {
+			tasks->AddTask([movie,generation,ticket] {
+				DisplayTicket release{g_displayProbeQueued,ticket};
+				if (generation != g_polarGeneration.load()) return;
+				DisplayObservation("scene_observed",false,static_cast<RE::GFxMovieView*>(movie));
+			});
+		} catch (...) { DisplayTicket release{g_displayProbeQueued,ticket}; }
+	}
 
 	RE::NiMatrix3 Basis(const RE::NiPoint3& u, const RE::NiPoint3& v)
 	{
@@ -161,20 +302,23 @@ namespace
 			Near(a_left.translate, a_right.translate) &&
 			SKEE::VR::CooperativeRestore::Near(a_left.scale, a_right.scale);
 	}
-	bool CapturePolar(RE::NiNode* node, RE::BSTriShape* quad, RE::NiAVObject* hmd)
+	const char* CapturePolar(RE::NiNode* node, RE::BSTriShape* quad, RE::NiAVObject* hmd)
 	{
+		if (!Finite(node->world) || !Finite(quad->world) || !Finite(hmd->world)) return "nonfinite_scene_pose";
 		auto* data = quad->GetGeometryRuntimeData().rendererData;
-		if (!data || !data->rawVertexData || quad->GetTrishapeRuntimeData().vertexCount != 4) return false;
+		if (!data) return "renderer_not_ready";
+		if (!data->rawVertexData) return "cpu_vertices_not_ready";
+		if (quad->GetTrishapeRuntimeData().vertexCount != 4) return "unsupported_quad_vertex_count";
 		auto desc=data->vertexDesc;
 		const auto stride=desc.GetSize(), p=desc.GetAttributeOffset(RE::BSGraphics::Vertex::VA_POSITION), t=desc.GetAttributeOffset(RE::BSGraphics::Vertex::VA_TEXCOORD0);
-		if (!desc.HasFlag(RE::BSGraphics::Vertex::VF_VERTEX) || !desc.HasFlag(RE::BSGraphics::Vertex::VF_UV) || stride>128 || p+12>stride || t+4>stride) return false;
+		if (!desc.HasFlag(RE::BSGraphics::Vertex::VF_VERTEX) || !desc.HasFlag(RE::BSGraphics::Vertex::VF_UV) || stride>128 || p+12>stride || t+4>stride) return "unsupported_quad_vertex_layout";
 		std::array<SKEE::MenuAppearance::SurfaceVertex,4> vertices{};
 		for (unsigned i=0;i<4;++i) {
 			float xyz[3]; std::uint16_t uv[2];
 			std::memcpy(xyz,data->rawVertexData+i*stride+p,sizeof(xyz)); std::memcpy(uv,data->rawVertexData+i*stride+t,sizeof(uv));
 			vertices[i]={xyz[0],xyz[1],xyz[2],DirectX::PackedVector::XMConvertHalfToFloat(uv[0]),DirectX::PackedVector::XMConvertHalfToFloat(uv[1])};
 		}
-		if (!SKEE::MenuAppearance::SurfaceAspect(vertices)) return false;
+		if (!SKEE::MenuAppearance::SurfaceAspect(vertices)) return "invalid_quad_surface";
 		RE::NiPoint3 u{},v{};
 		for (unsigned i=1;i<4;++i) {
 			const auto du=vertices[i].u-vertices[0].u,dv=vertices[i].v-vertices[0].v;
@@ -182,29 +326,43 @@ namespace
 			if (std::abs(dv)<1e-6 && std::abs(du)>1e-6) u=d/static_cast<float>(du);
 			if (std::abs(du)<1e-6 && std::abs(dv)>1e-6) v=d/static_cast<float>(dv);
 		}
-		if (u.Length()<0.001F || v.Length()<0.001F) return false;
+		if (!Finite(u) || !Finite(v) || u.Length()<0.001F || v.Length()<0.001F) return "degenerate_quad_axes";
 		const RE::NiPoint3 corner{static_cast<float>(vertices[0].x),static_cast<float>(vertices[0].y),static_cast<float>(vertices[0].z)};
-		g_polarU=quad->world.rotate*(u*quad->world.scale); g_polarV=quad->world.rotate*(v*quad->world.scale);
-		g_polarUVOrigin=quad->world.translate+quad->world.rotate*((corner-u*static_cast<float>(vertices[0].u)-v*static_cast<float>(vertices[0].v))*quad->world.scale);
+		const auto worldU=quad->world.rotate*(u*quad->world.scale), worldV=quad->world.rotate*(v*quad->world.scale);
+		const auto origin=quad->world.translate+quad->world.rotate*((corner-u*static_cast<float>(vertices[0].u)-v*static_cast<float>(vertices[0].v))*quad->world.scale);
+		auto unitU=worldU,unitV=worldV;
+		const auto lengthU=unitU.Unitize(),lengthV=unitV.Unitize();
+		if (!Finite(worldU) || !Finite(worldV) || !Finite(origin) ||
+			!SKEE::VR::DisplayPolicy::OrthogonalAxes(lengthU,lengthV,unitU.Dot(unitV))) return "invalid_quad_world_basis";
 		auto* player=RE::PlayerCharacter::GetSingleton(); auto* actor=player ? player->Get3D(false) : nullptr;
 		auto* head=actor ? actor->GetObjectByName(RE::BSFixedString("NPC Head [Head]")) : nullptr;
-		g_polarForward=(head ? head->world.translate : g_polarUVOrigin+g_polarU*0.5F+g_polarV*0.5F)-hmd->world.translate;
-		g_polarForward.z=0;
-		if (g_polarForward.Unitize()<0.001F) return false;
+		auto forward=(head ? head->world.translate : origin+worldU*0.5F+worldV*0.5F)-hmd->world.translate;
+		forward.z=0;
+		if (!Finite(forward) || forward.Unitize()<0.001F) return "heading_not_ready";
+		g_polarU=worldU; g_polarV=worldV; g_polarUVOrigin=origin; g_polarForward=forward;
 		g_polarNode={node->local,node->world}; g_polarQuad={quad->local,quad->world};
 		g_polarNodeIdentity.reset(node); g_polarQuadIdentity.reset(quad);
 		g_polarNodeParentIdentity.reset(node->parent); g_polarQuadParentIdentity.reset(quad->parent);
 		g_polarDescendant=false;
-		for (auto* a=quad->parent;a;a=a->parent) if (a==node) g_polarDescendant=true;
+		auto* ancestor=quad->parent;
+		for (unsigned depth=0;ancestor && depth<128;ancestor=ancestor->parent,++depth) if (ancestor==node) { g_polarDescendant=true; break; }
+		if (ancestor && !g_polarDescendant) return "quad_ancestry_depth_limit";
 		g_polarCaptured=true;
-		return true;
+		g_polarCaptureGeneration=g_polarGeneration.load();
+		return nullptr;
 	}
-	void ApplyPolarObject(RE::NiAVObject* object, PolarObject& base, const RE::NiMatrix3& rotation, const RE::NiPoint3& source, const RE::NiPoint3& target, float scale)
+	bool CalculatePolarObject(RE::NiAVObject* object, const PolarObject& base, const RE::NiMatrix3& rotation, const RE::NiPoint3& source, const RE::NiPoint3& target, float scale, RE::NiTransform& result)
 	{
+		if (!object || !object->parent || !Finite(object->parent->world) || !Finite(base.world)) return false;
 		const auto& parent=object->parent->world;
-		object->local.rotate=parent.rotate.Transpose()*rotation*base.world.rotate;
-		object->local.scale=base.world.scale*scale/parent.scale;
-		object->local.translate=parent.rotate.Transpose()*(target+rotation*((base.world.translate-source)*scale)-parent.translate)/parent.scale;
+		result.rotate=parent.rotate.Transpose()*rotation*base.world.rotate;
+		result.scale=base.world.scale*scale/parent.scale;
+		result.translate=parent.rotate.Transpose()*(target+rotation*((base.world.translate-source)*scale)-parent.translate)/parent.scale;
+		return Finite(result);
+	}
+	void CommitPolarObject(RE::NiAVObject* object, PolarObject& base, const RE::NiTransform& result)
+	{
+		object->local=result;
 		RE::NiUpdateData update{0,RE::NiUpdateData::Flag::kDirty}; object->Update(update);
 		base.appliedLocal = object->local;
 		base.applied = true;
@@ -213,35 +371,80 @@ namespace
 	{
 		void Call(Params& args) override
 		{
-			if (args.userData) { if (args.retVal) args.retVal->SetNumber(g_polarState.load()); return; }
+			if (!args.movie || !IsCurrentRaceSexMovie(args.movie)) {
+				if (args.retVal) args.retVal->SetBoolean(false);
+				return;
+			}
+			if (args.userData) {
+				QueueDisplayObservation(args.movie);
+				if (!args.retVal) return;
+				if (reinterpret_cast<std::uintptr_t>(args.userData) == 1) args.retVal->SetNumber(g_polarState.load());
+				else {
+					std::string report;
+					{ std::scoped_lock lock{g_displayReportMutex}; report=g_displayReport; }
+					args.movie->CreateString(args.retVal,report.c_str());
+				}
+				return;
+			}
+			if (args.retVal) args.retVal->SetBoolean(false);
 			if (args.argCount!=6 || !g_raceSexMenuWorldTransformEnabled) return;
 			std::array<double,6> values{};
 			for (unsigned i=0;i<6;++i) { if (!args.args[i].IsNumber()) return; values[i]=args.args[i].GetNumber(); if (!std::isfinite(values[i])) return; }
 			if (std::abs(values[0])>85 || std::abs(values[1])>60 || values[2]<30 || values[2]>300 || values[3]<25 || values[3]>300) return;
 			// Registered only on the RaceSex GFxMovieView; Params exposes its base type.
 			const auto frame=static_cast<RE::GFxMovieView*>(args.movie)->GetVisibleFrameRect();
-			if (!(frame.right>frame.left && frame.bottom>frame.top)) return;
-			const float u=static_cast<float>((values[4]-frame.left)/(frame.right-frame.left)),v=static_cast<float>((values[5]-frame.top)/(frame.bottom-frame.top));
-			if (u<0 || u>1 || v<0 || v>1) return;
+			const bool frameValid=std::isfinite(frame.left) && std::isfinite(frame.right) && std::isfinite(frame.top) && std::isfinite(frame.bottom) && frame.right>frame.left && frame.bottom>frame.top;
+			const float u=frameValid ? static_cast<float>((values[4]-frame.left)/(frame.right-frame.left)) : -1;
+			const float v=frameValid ? static_cast<float>((values[5]-frame.top)/(frame.bottom-frame.top)) : -1;
 			RE::GFxValue pickerVisible;
 			const bool colorPicker = args.movie->GetVariable(&pickerVisible,
 				"_root.RaceSexMenuBaseInstance.RaceSexPanelsInstance.colorField._visible") &&
 				pickerVisible.IsBool() && pickerVisible.GetBool();
 			const float height = SKEE::MenuConfiguration::PlacementHeight(colorPicker);
 			const bool forceVertical = SKEE::MenuConfiguration::PlacementForceVertical();
-			auto* tasks=SKSE::GetTaskInterface(); if (!tasks || g_polarQueued.exchange(true)) return;
+			auto* tasks=SKSE::GetTaskInterface(); if (!tasks) return;
+			const auto ticket=g_displayTickets.fetch_add(1)+1;
+			std::uint64_t empty=0;
+			if (!g_polarQueued.compare_exchange_strong(empty,ticket)) return;
 			g_polarState.store(0);
 			const auto generation=g_polarGeneration.load(); const auto identity=args.movie;
-			tasks->AddTask([values,u,v,generation,identity,height,forceVertical] {
-				g_polarQueued.store(false);
+			try { tasks->AddTask([values,u,v,generation,identity,height,forceVertical,ticket] {
+				DisplayTicket release{g_polarQueued,ticket};
 				auto* ui=RE::UI::GetSingleton(); auto menu=ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
 				if (generation!=g_polarGeneration.load() || !menu || menu->uiMovie.get()!=identity) return;
+				ResetDisplayBudget();
+				const auto view=SKEE::FaceView::Current();
+				const SKEE::VR::DisplayPolicy::Request request{values[0],values[1],values[2],values[3],height,forceVertical?1.:0.,static_cast<double>(view)};
+				g_displayRequest=request;
+				const auto decision=g_displayReadiness.Next(request,DisplayMilliseconds());
+				if (decision==SKEE::VR::DisplayPolicy::Decision::wait) return;
+				if (decision==SKEE::VR::DisplayPolicy::Decision::expired) {
+					g_polarState.store(2);
+					DisplayObservation("readiness_budget_exhausted",true,menu->uiMovie.get(),true);
+					return;
+				}
+				const auto pending=[&](const char* reason) {
+					// Existing movie retries state0. A transient missing resource must
+					// never be cached as state2 before the bounded readiness window ends.
+					g_polarState.store(0);
+					DisplayObservation(reason,true,menu->uiMovie.get());
+				};
+				const auto refuse=[&](const char* reason) {
+					g_polarState.store(2);
+					DisplayObservation(reason,true,menu->uiMovie.get(),true);
+				};
+				if (!std::isfinite(u) || !std::isfinite(v) || u<0 || u>1 || v<0 || v>1) { pending("movie_frame_or_centre_not_ready"); return; }
 				auto* player=RE::PlayerCharacter::GetSingleton(); auto* nodes=player ? player->GetVRNodeData() : nullptr;
 				auto* node=nodes ? nodes->uiNode.get() : nullptr; auto* quad=nodes ? nodes->InWorldUIQuadGeo.get() : nullptr; auto* hmd=nodes ? nodes->HmdNode.get() : nullptr;
-				if (!node || !quad || !hmd || !node->parent || !quad->parent || node->parent->world.scale<=0 || quad->parent->world.scale<=0) return;
-				if (!g_uiNodeYawOverridden) { SKEE::VR::ApplyRaceSexMenuWorldYaw(); if (!g_uiNodeYawOverridden) return; }
-				if (g_polarCaptured && (g_polarNodeIdentity.get()!=node || g_polarQuadIdentity.get()!=quad)) { g_polarState.store(2); return; }
-				if (!g_polarCaptured && !CapturePolar(node,quad,hmd)) { g_polarState.store(2); return; }
+				if (!node || !quad || !hmd || !node->parent || !quad->parent) { pending("scene_nodes_not_ready"); return; }
+				if (!Finite(node->parent->world) || !Finite(quad->parent->world) || !Finite(hmd->world)) { pending("invalid_parent_or_viewer_transform"); return; }
+				if (!g_uiNodeYawOverridden) { SKEE::VR::ApplyRaceSexMenuWorldYaw(); if (!g_uiNodeYawOverridden) { pending("native_yaw_not_ready"); return; } }
+				if (g_raceSexMenuUINode.get()!=node || (g_uiQuadGeoYawOverridden && g_raceSexMenuUIQuadGeo.get()!=quad)) { refuse("yaw_scene_identity_changed_reopen_menu"); return; }
+				if (g_polarCaptured && (g_polarCaptureGeneration!=generation || g_polarNodeIdentity.get()!=node || g_polarQuadIdentity.get()!=quad ||
+					g_polarNodeParentIdentity.get()!=node->parent || g_polarQuadParentIdentity.get()!=quad->parent)) { refuse("captured_scene_changed_reopen_menu"); return; }
+				if (g_polarCaptured && ((g_polarNode.applied && !Near(node->local,g_polarNode.appliedLocal)) ||
+					(!g_polarDescendant && g_polarQuad.applied && !Near(quad->local,g_polarQuad.appliedLocal)))) { refuse("external_pose_changed_preserving_owner"); return; }
+				if (!g_polarCaptured) { if (const auto reason=CapturePolar(node,quad,hmd)) { pending(reason); return; } }
 				const auto placement=SKEE::VR::MakeRaisedPolarPlacement(g_polarForward.x,g_polarForward.y,
 					static_cast<float>(values[0]),static_cast<float>(values[1]),static_cast<float>(values[2]),height,forceVertical);
 				const auto& frame=placement.frame;
@@ -253,17 +456,19 @@ namespace
 				const auto source=g_polarUVOrigin+g_polarU*u+g_polarV*v;
 				// Snapshot the viewer only on a real normal/face transition. Modal
 				// placement changes must not chase physical headset movement either.
-				const auto view=SKEE::FaceView::Current();
-				if (g_polarAnchorView!=view) {
-					g_polarViewerAnchor=hmd->world.translate;
-					g_polarAnchorView=view;
-				}
-				const auto target=g_polarViewerAnchor+RE::NiPoint3{placement.offset[0],placement.offset[1],placement.offset[2]};
+				const auto anchor=g_polarAnchorView!=view ? hmd->world.translate : g_polarViewerAnchor;
+				const auto target=anchor+RE::NiPoint3{placement.offset[0],placement.offset[1],placement.offset[2]};
 				const float scale=static_cast<float>(values[3])/100;
-				ApplyPolarObject(node,g_polarNode,rotation,source,target,scale);
-				if (!g_polarDescendant) ApplyPolarObject(quad,g_polarQuad,rotation,source,target,scale);
+				RE::NiTransform nodeResult{},quadResult{};
+				if (!Finite(source) || !Finite(target) || !CalculatePolarObject(node,g_polarNode,rotation,source,target,scale,nodeResult) ||
+					(!g_polarDescendant && !CalculatePolarObject(quad,g_polarQuad,rotation,source,target,scale,quadResult))) { refuse("invalid_candidate_pose_no_transform_written"); return; }
+				// Validate BOTH candidates before changing either object.
+				CommitPolarObject(node,g_polarNode,nodeResult);
+				if (!g_polarDescendant) CommitPolarObject(quad,g_polarQuad,quadResult);
+				g_polarViewerAnchor=anchor; g_polarAnchorView=view;
 				g_polarState.store(1);
-			});
+				DisplayObservation("placement_applied",false,menu->uiMovie.get(),true);
+			}); } catch (...) { DisplayTicket release{g_polarQueued,ticket}; return; }
 			if (args.retVal) args.retVal->SetBoolean(true);
 		}
 	};
@@ -607,7 +812,13 @@ namespace
 		g_uiQuadRotationSetting = rotationSetting;
 		g_previousUIQuadScale = scaleSetting->GetFloat();
 		g_previousUIQuadRotation = rotationSetting->GetFloat();
-		scaleSetting->SetFloat(g_previousUIQuadScale * g_raceSexMenuWorldScale);
+		const auto appliedScale = g_previousUIQuadScale * g_raceSexMenuWorldScale;
+		if (!SKEE::VR::DisplayPolicy::PositiveScale(appliedScale) || !std::isfinite(g_previousUIQuadRotation) || !std::isfinite(g_raceSexMenuWorldYaw)) {
+			SKSE::log::error("RaceMenu VR display: invalid shared scale/yaw; no shared setting written");
+			g_uiQuadScaleSetting = nullptr; g_uiQuadRotationSetting = nullptr;
+			return false;
+		}
+		scaleSetting->SetFloat(appliedScale);
 		rotationSetting->SetFloat(g_raceSexMenuWorldYaw);
 		g_appliedUIQuadScale = scaleSetting->GetFloat();
 		g_appliedUIQuadRotation = rotationSetting->GetFloat();
@@ -732,7 +943,15 @@ namespace
 		RE::GFxMovieView::ScaleModeType a_mode,
 		float a_backgroundAlpha)
 	{
-		if (!SKEE::RaceSexMenuSwfPatch::Prepare(a_manager)) return false;
+		const auto session=g_polarGeneration.fetch_add(1)+1;
+		g_polarQueued.store(0); g_displayProbeQueued.store(0); g_displayNextProbe.store(0); g_displaySuppressed.store(0);
+		g_polarState.store(0);
+		{ std::scoped_lock lock{g_displayReportMutex}; g_displayReport=nlohmann::json{{"session",session},{"placementState",0},{"reason","movie_loading"},{"headsetVisibility","not_measured"}}.dump(); }
+		if (!SKEE::RaceSexMenuSwfPatch::Prepare(a_manager)) {
+			g_polarState.store(2);
+			SKSE::log::error("RaceMenu VR display session={}: movie preparation failed",session);
+			return false;
+		}
 		// This general VR setting is sampled while Skyrim constructs the projected
 		// menu quad.  Override it before the RaceSex movie is loaded, then restore
 		// it on RaceSexMenu's close event so subsequent menus keep their own size.
@@ -765,16 +984,16 @@ namespace
 			a_viewOut->SetMouseCursorCount(1);
 		}
 
-		if (!g_loggedMovieLoad) {
+		{
 			SKSE::log::info(
-				"RaceSex VR movie load: requested='{}', forced='{}', loaded={}, cursor={}, offscreen={}, mouseCursors={}",
+				"RaceSex VR movie load: requested='{}', forced='{}', loaded={}, cursor={}, offscreen={}, mouseCursors={}, session={} (movie status only; headset visibility not measured)",
 				a_requestedMovie ? a_requestedMovie : "<null>",
 				kVRRaceSexMovie,
 				loaded,
 				a_menu ? a_menu->UsesCursor() : false,
 				a_menu ? a_menu->RendersOffscreenTargets() : false,
-				a_viewOut ? a_viewOut->GetMouseCursorCount() : 0);
-			g_loggedMovieLoad = true;
+				a_viewOut ? a_viewOut->GetMouseCursorCount() : 0,
+				session);
 		}
 
 		if (!loaded) {
@@ -809,6 +1028,12 @@ namespace
 
 namespace SKEE::VR
 {
+	void ObserveRaceSexMenuDisplay()
+	{
+		auto* ui=RE::UI::GetSingleton();
+		auto menu=ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
+		if (menu && menu->uiMovie) QueueDisplayObservation(menu->uiMovie.get());
+	}
 	void RecordExtensionTrace(RE::GFxMovie* movie, const char* boundary,
 		const char* provider, const char* control, double requested, double applied) noexcept
 	{
@@ -826,6 +1051,8 @@ namespace SKEE::VR
 		static RE::GPtr<PolarPlacementFunction> polar{new PolarPlacementFunction{}};
 		RE::GFxValue placement; a_view->CreateFunction(&placement,polar.get()); a_root->SetMember("SetMenuPolarPlacement",placement);
 		a_view->CreateFunction(&placement,polar.get(),reinterpret_cast<void*>(1)); a_root->SetMember("GetMenuPolarPlacementState",placement);
+		// JSON of the latest bounded native scene observation, not an eye-render verdict.
+		a_view->CreateFunction(&placement,polar.get(),reinterpret_cast<void*>(2)); a_root->SetMember("GetMenuDisplayState",placement);
 		a_root->SetMember("vrInputTraceContractVersion", RE::GFxValue{ 2 });
 		static RE::GPtr<InputTraceFunction> handler{ new InputTraceFunction{} };
 		constexpr const char* names[]{ "BeginVRInputTrace", "RecordVRMovieInput", "ReadVRInputTrace", "EndVRInputTrace" };
@@ -839,28 +1066,45 @@ namespace SKEE::VR
 	void SetRaceSexMenuWorldTransform(float a_scale, float a_yawDegrees, bool a_enabled)
 	{
 		g_raceSexMenuWorldTransformEnabled = a_enabled;
-		g_raceSexMenuWorldScale = a_scale > 0.0F ? a_scale : 1.0F;
-		g_raceSexMenuWorldYaw = a_yawDegrees;
+		const bool validScale=SKEE::VR::DisplayPolicy::PositiveScale(a_scale);
+		const bool validYaw=std::isfinite(a_yawDegrees);
+		g_raceSexMenuWorldScale = validScale ? a_scale : 1.0F;
+		g_raceSexMenuWorldYaw = SKEE::VR::DisplayPolicy::NormalizedYaw(a_yawDegrees);
+		if (!validScale || !validYaw) SKSE::log::warn("RaceMenu VR display: invalid configured scale/yaw; using scale={} yaw={}",g_raceSexMenuWorldScale,g_raceSexMenuWorldYaw);
 	}
 
 	bool ApplyRaceSexMenuWorldYaw()
 	{
-		if (g_uiNodeYawOverridden || g_uiQuadGeoYawOverridden || !g_raceSexMenuWorldTransformEnabled) {
-			return true;
-		}
+		if (!g_raceSexMenuWorldTransformEnabled) return true;
+		if (!g_uiQuadTransformOverridden) return false;
 
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		auto* vrNodes = player ? player->GetVRNodeData() : nullptr;
 		auto* uiNode = vrNodes ? vrNodes->uiNode.get() : nullptr;
 		auto* uiQuadGeo = vrNodes ? vrNodes->InWorldUIQuadGeo.get() : nullptr;
-		if (!uiNode || !uiQuadGeo) {
+		if (!uiNode || !uiQuadGeo || !uiNode->parent || !uiQuadGeo->parent ||
+			!Finite(uiNode->local) || !Finite(uiQuadGeo->local) || !Finite(uiNode->world) || !Finite(uiQuadGeo->world)) {
 			return false;
+		}
+		if (g_uiNodeYawOverridden || g_uiQuadGeoYawOverridden) {
+			return g_raceSexMenuUINode.get()==uiNode && g_raceSexMenuUINodeParent.get()==uiNode->parent &&
+				(!g_uiQuadGeoYawOverridden || (g_raceSexMenuUIQuadGeo.get()==uiQuadGeo && g_raceSexMenuUIQuadGeoParent.get()==uiQuadGeo->parent));
 		}
 
 		RE::NiMatrix3 yaw;
 		constexpr float kDegreesToRadians = 0.01745329251994329577F;
-		const auto yawDelta = (g_raceSexMenuWorldYaw - g_previousUIQuadRotation) * kDegreesToRadians;
+		const auto yawDelta = (g_raceSexMenuWorldYaw - SKEE::VR::DisplayPolicy::NormalizedYaw(g_previousUIQuadRotation)) * kDegreesToRadians;
 		yaw.MakeZRotation(yawDelta);
+		bool geometryDescendsFromUINode = false;
+		auto* ancestor=uiQuadGeo->parent;
+		for (unsigned depth=0;ancestor && depth<128;ancestor=ancestor->parent,++depth) {
+			if (ancestor==uiNode) { geometryDescendsFromUINode=true; break; }
+		}
+		if (ancestor && !geometryDescendsFromUINode) return false;
+		auto nodeResult=uiNode->local,quadResult=uiQuadGeo->local;
+		nodeResult.rotate=yaw*nodeResult.rotate;
+		if (!geometryDescendsFromUINode) quadResult.rotate=yaw*quadResult.rotate;
+		if (!Finite(nodeResult) || !Finite(quadResult)) return false;
 
 		// Skyrim's wand ray terminates against the projected-UI parent while the
 		// visible movie is carried by InWorldUIQuadGeo. Rotate the parent so the
@@ -870,24 +1114,17 @@ namespace SKEE::VR
 		g_raceSexMenuUINode.reset(uiNode);
 		g_raceSexMenuUINodeParent.reset(uiNode->parent);
 		g_previousUINodeRotation = uiNode->local.rotate;
-		uiNode->local.rotate = yaw * g_previousUINodeRotation;
+		uiNode->local.rotate = nodeResult.rotate;
 		g_appliedUINodeRotation = uiNode->local.rotate;
 		RE::NiUpdateData updateData{ 0.0F, RE::NiUpdateData::Flag::kDirty };
 		uiNode->Update(updateData);
 		g_uiNodeYawOverridden = true;
 
-		bool geometryDescendsFromUINode = false;
-		for (auto* ancestor = uiQuadGeo->parent; ancestor; ancestor = ancestor->parent) {
-			if (ancestor == uiNode) {
-				geometryDescendsFromUINode = true;
-				break;
-			}
-		}
 		if (!geometryDescendsFromUINode) {
 			g_raceSexMenuUIQuadGeo.reset(uiQuadGeo);
 			g_raceSexMenuUIQuadGeoParent.reset(uiQuadGeo->parent);
 			g_previousUIQuadGeoRotation = uiQuadGeo->local.rotate;
-			uiQuadGeo->local.rotate = yaw * g_previousUIQuadGeoRotation;
+			uiQuadGeo->local.rotate = quadResult.rotate;
 			g_appliedUIQuadGeoRotation = uiQuadGeo->local.rotate;
 			uiQuadGeo->Update(updateData);
 			g_uiQuadGeoYawOverridden = true;
@@ -905,7 +1142,10 @@ namespace SKEE::VR
 
 	void RestoreRaceSexMenuWorldTransform()
 	{
+		SKSE::log::info("RaceMenu VR display session={} closed: placementState={}, suppressedObservations={} (headset visibility not measured)",
+			g_polarGeneration.load(),g_polarState.load(),g_displaySuppressed.load());
 		g_polarGeneration.fetch_add(1);
+		g_polarQueued.store(0); g_displayProbeQueued.store(0);
 		if (g_polarCaptured) {
 			RE::NiUpdateData update{0,RE::NiUpdateData::Flag::kDirty};
 			const auto restorePolar = [&](auto& a_identity, auto& a_parent, PolarObject& a_values, const char* a_label) {
@@ -1181,6 +1421,7 @@ namespace SKEE::VR
 
 namespace SKEE::VR
 {
+	void ObserveRaceSexMenuDisplay() {}
 	void RecordExtensionTrace(RE::GFxMovie*, const char*, const char*, const char*, double, double) noexcept {}
 	void RegisterRaceSexMenuInputTrace(RE::GFxMovieView*, RE::GFxValue*) {}
 	void SetRaceSexMenuWorldTransform(float, float, bool) {}
