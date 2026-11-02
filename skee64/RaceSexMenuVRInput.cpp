@@ -139,6 +139,7 @@ namespace
 	const char* g_displayPlacementReason{"not_requested"};
 	const char* g_displayLastWaitingReason{"none"};
 	SKEE::VR::DisplayPolicy::Request g_displayRequest{};
+	std::array<float,2> g_displayUV{-1,-1};
 	std::mutex g_displayReportMutex;
 	std::string g_displayReport{"{\"stage\":\"not_open\"}"};
 	bool Near(const RE::NiTransform&, const RE::NiTransform&);
@@ -185,6 +186,7 @@ namespace
 		g_displayPlacementReason = g_raceSexMenuWorldTransformEnabled ? "not_requested" : "placement_disabled";
 		g_displayLastWaitingReason = "none";
 		g_displayRequest = {};
+		g_displayUV = {-1,-1};
 	}
 	void DisplayObservation(const char* reason, bool warning, RE::GFxMovieView* expectedMovie, bool force = false) noexcept
 	{
@@ -239,6 +241,9 @@ namespace
 				{"upright",g_displayRequest[5]!=0}, {"view",g_displayRequest[6]}};
 			facts["elapsedMs"] = g_displayReadiness.Elapsed(DisplayMilliseconds());
 			facts["headsetVisibility"] = "not_measured";
+			facts["artworkUV"] = g_displayUV;
+			if (g_polarCaptured) facts["referenceHeading"] = {g_polarForward.x,g_polarForward.y,g_polarForward.z};
+			if (g_polarAnchorView!=~0U && Finite(g_polarViewerAnchor)) facts["viewerAnchor"] = {g_polarViewerAnchor.x,g_polarViewerAnchor.y,g_polarViewerAnchor.z};
 			if (node && Finite(node->world)) facts["nodeWorld"] = {node->world.translate.x,node->world.translate.y,node->world.translate.z,node->world.scale};
 			if (quad && Finite(quad->world)) facts["quadWorld"] = {quad->world.translate.x,quad->world.translate.y,quad->world.translate.z,quad->world.scale};
 			const bool emit=(force || changed || reasonChanged) && g_displayLogBudget.Take();
@@ -416,6 +421,7 @@ namespace
 				const auto view=SKEE::FaceView::Current();
 				const SKEE::VR::DisplayPolicy::Request request{values[0],values[1],values[2],values[3],height,forceVertical?1.:0.,static_cast<double>(view)};
 				g_displayRequest=request;
+				g_displayUV={u,v};
 				const auto decision=g_displayReadiness.Next(request,DisplayMilliseconds());
 				if (decision==SKEE::VR::DisplayPolicy::Decision::wait) return;
 				if (decision==SKEE::VR::DisplayPolicy::Decision::expired) {
