@@ -53,15 +53,32 @@ function fixture() {
 test.beforeEach(()=>{
   starts=[];finishes=[];renames=[];cancels=[];polls=[];
   outcome={status:'pending',text:''};beginOutcome={status:'pending',id:12,error:''};
-  delete api.promptForNameOnExit;
+  api.promptForNameOnExit=true;
 });
-test('missing/off option preserves current finish with no keyboard',()=>{
+test('explicit off or absent native API flag preserves finish without keyboard',()=>{
   for (const value of [undefined,false,0]) {
     api.promptForNameOnExit=value;
     assert.equal(fixture().RequestVRCharacterCreationFinish(),true);
   }
   assert.deepEqual(starts,[]);
   assert.deepEqual(finishes,Array(3).fill(['ChangeName',['Prisoner']]));
+});
+test('default-on native flag prompts without any opt-in',()=>{
+  const owner=fixture();
+  assert.equal(owner.RequestVRCharacterCreationFinish(),true);
+  assert.deepEqual(starts,[['name','Prisoner']]);
+  assert.deepEqual(finishes,[]);
+  owner.CancelVRTextInput();
+});
+test('native fallback and both shipped INIs agree on default-on with explicit-zero opt-out',()=>{
+  const native=fs.readFileSync(path.join(__dirname,'../skee64/MenuConfiguration.cpp'),'utf8');
+  assert.match(native,/bool promptForNameOnExit\{true\}/);
+  assert.match(native,/promptForNameOnExit = !readOption \|\| Number\(readOption\("VR", "bPromptForNameOnExit"\), 0, 1\) != 0/);
+  for (const file of ['menu-profiles.ini.inc','skee64_custom.ini']) {
+    const ini=fs.readFileSync(path.join(__dirname,'../packaging',file),'utf8');
+    assert.equal((ini.match(/^bPromptForNameOnExit=1\r?$/gm)||[]).length,1,file);
+    assert.doesNotMatch(ini,/^bPromptForNameOnExit=0\r?$/m);
+  }
 });
 test('original finish request prompts once; acceptance finishes once without intermediate rename',()=>{
   api.promptForNameOnExit=true;

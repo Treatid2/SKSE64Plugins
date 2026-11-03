@@ -272,8 +272,8 @@ void CharacterCreationInterface::ProbeReady(std::uint32_t a_attempt)
 	auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
 	if (ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME) && menu && menu->uiMovie) {
 #if defined(ENABLE_SKYRIM_VR)
-		// The default VR flow accepts names inside the menu. Opting back into
-		// the exit-time prompt retains the stock naming confirmation wording.
+		// Keep the stock naming confirmation for the default exit-time prompt.
+		// The opt-out flow accepts names inside the menu instead.
 		// Keep the stock confirmation callback and both of its actions intact.
 		if (!SKEE::MenuConfiguration::PromptForNameOnExit()) {
 			auto* settings = RE::GameSettingCollection::GetSingleton();

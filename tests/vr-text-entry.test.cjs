@@ -221,7 +221,7 @@ delete api.promptForNameOnExit;
 const patcher=fs.readFileSync(path.join(__dirname,'../tools/patch-vr-racesex-swf.ps1'),'utf8');
 assert.match(patcher,/if\(_global\.skse\.IsVR\(\)\).*RequestVRCharacterCreationFinish/s);
 const configuration=fs.readFileSync(path.join(__dirname,'../skee64/MenuConfiguration.cpp'),'utf8');
-assert.match(configuration,/Number\(readOption\("VR", "bPromptForNameOnExit"\), 0, 1\) == 1/);
+assert.match(configuration,/Number\(readOption\("VR", "bPromptForNameOnExit"\), 0, 1\) != 0/);
 assert.match(configuration,/RegisterBool\(root, "promptForNameOnExit", promptForNameOnExit\)/);
 // Source guardrails supplement, but do not substitute for native/runtime tests.
 const native=fs.readFileSync(path.join(__dirname,'../skee64/RaceSexMenuVRKeyboard.cpp'),'utf8');

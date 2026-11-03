@@ -1,7 +1,7 @@
    function RequestVRCharacterCreationFinish()
    {
       // The stock Done/keybind confirmation reaches ShowTextEntryField.
-      // Restore its naming step only when explicitly enabled in the INI.
+      // The native configuration enables naming by default; zero opts out.
       if(_global.skse.plugins.CharGen.promptForNameOnExit == true)
          return this.BeginVRTextInput("name",true);
       return this.FinishVRCharacterCreation();

@@ -12,11 +12,11 @@ sPlayerName=
 ; 1 = also apply sPlayerName each time showracemenu opens for an existing character.
 ; This explicitly renames saved characters; leave at 0 unless that is what you want.
 bOverrideExistingPlayerName=0
-; 1 = restore the naming keyboard after confirming the original Done/finish keybind.
+; 1 (default) = naming keyboard after confirming the original Done/finish keybind.
 ; Accepting a valid name finishes; Cancel/keyboard failure keeps RaceMenu open.
-; 0 (default) = finish using the name already shown; Name remains separately clickable.
+; 0 = opt out and finish using the name already shown; Name remains separately clickable.
 ; Uses the existing runtime keyboard; does not add/remap a key or provide a new keyboard.
-bPromptForNameOnExit=0
+bPromptForNameOnExit=1
 ; Native quill defaults depend on your active runtime, not the headset brand.
 ; SteamVR: 1 = quill (default); 0 = no quill, e.g. when using your own laser provider.
 bUseQuillSteamVR=1
