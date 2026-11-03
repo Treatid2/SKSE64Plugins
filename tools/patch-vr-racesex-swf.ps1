@@ -408,7 +408,7 @@ if ([regex]::Matches($raceMenuText, [regex]::Escape($nameUpdateNeedle)).Count -n
 $raceMenuText = $raceMenuText.Replace($nameUpdateNeedle, $nameUpdateNeedle + "`r`n      if(_global.skse.IsVR()) this.UpdateVRNameButton(astrPlayerName);")
 $exitNameNeedle = "   function ShowTextEntryField()`r`n   {"
 if ([regex]::Matches($raceMenuText, [regex]::Escape($exitNameNeedle)).Count -ne 1) { throw 'Exit naming callback anchor not unique.' }
-$raceMenuText = $raceMenuText.Replace($exitNameNeedle, $exitNameNeedle + "`r`n      if(_global.skse.IsVR())`r`n      {`r`n         this.FinishVRCharacterCreation();`r`n         return undefined;`r`n      }")
+$raceMenuText = $raceMenuText.Replace($exitNameNeedle, $exitNameNeedle + "`r`n      if(_global.skse.IsVR())`r`n      {`r`n         this.RequestVRCharacterCreationFinish();`r`n         return undefined;`r`n      }")
 $bottomStart = "   function updateBottomBar()`r`n   {`r`n      this.navPanel.clearButtons();"
 if (-not $raceMenuText.Contains($bottomStart)) { throw 'Bottom-bar rebuild anchor missing.' }
 $raceMenuText = $raceMenuText.Replace($bottomStart, "   function updateBottomBar()`r`n   {`r`n      if(_global.skse.IsVR()) this.ResetVRTextButtons();`r`n      this.navPanel.clearButtons();")
@@ -633,9 +633,12 @@ $verifiedRaceMenuText = Get-Content -Raw -LiteralPath $verifiedRaceMenuScript
 foreach ($appearanceBoundary in @('SetupVRMenuAppearance', 'FitVRBackgroundImage', 'ColorVRTextChildren', 'menuBackgroundImage', 'MovieClipLoader', 'localToGlobal', 'removeListener', 'MountMenuBackgroundImage', 'GetMenuBackgroundImageState', 'CheckVRBackgroundMount', 'vrBackgroundMountDeadline', 'error: native texture registration timeout', 'vrBackgroundExpectedWidth', 'vrBackgroundExpectedHeight', 'error: unexpected image dimensions')) {
     if (-not $verifiedRaceMenuText.Contains($appearanceBoundary)) { throw "Rebuilt SWF is missing appearance boundary: $appearanceBoundary" }
 }
-if ($verifiedRaceMenuText -notmatch 'function ShowTextEntryField\(\)\s*\{\s*if\(_global\.skse\.IsVR\(\)\)\s*\{\s*this\.FinishVRCharacterCreation\(\);\s*return undefined;' -or
-    $verifiedRaceMenuText -notmatch 'function FinishVRCharacterCreation\(') {
-    throw 'The rebuilt SWF did not retain the VR accepted-name completion path.'
+if ($verifiedRaceMenuText -notmatch 'function ShowTextEntryField\(\)\s*\{\s*if\(_global\.skse\.IsVR\(\)\)\s*\{\s*this\.RequestVRCharacterCreationFinish\(\);\s*return undefined;' -or
+    $verifiedRaceMenuText -notmatch 'function FinishVRCharacterCreation\(' -or
+    $verifiedRaceMenuText -notmatch 'function RequestVRCharacterCreationFinish\(' -or
+    $verifiedRaceMenuText -notmatch 'promptForNameOnExit' -or
+    $verifiedRaceMenuText -notmatch 'vrTextInputFinishAfterName') {
+    throw 'The rebuilt SWF did not retain the configurable VR name-prompt/completion path.'
 }
 if ($verifiedRaceMenuText -notmatch 'SetupVRTextButtons' -or
     $verifiedRaceMenuText -notmatch 'PositionVRTextButtons' -or

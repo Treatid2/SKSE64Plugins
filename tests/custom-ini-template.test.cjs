@@ -17,7 +17,7 @@ test('published custom INI mirrors the qualified default template',()=>{
   const got=parse(text);
   const populated={
     'Menu Appearance/sInitialCategory':'All',
-    'VR/bUseQuillSteamVR':'1','VR/bUseQuillOCU':'0','VR/bOverrideExistingPlayerName':'0',
+    'VR/bUseQuillSteamVR':'1','VR/bUseQuillOCU':'0','VR/bOverrideExistingPlayerName':'0','VR/bPromptForNameOnExit':'0',
     'Menu Profile Flat/bConsolidatePanel':'0','Menu Profile VR Normal/bConsolidatePanel':'1',
     'Menu Profile VR Normal/bForceVertical':'1','Menu Profile VR Normal/fAzimuth':'30',
     'Menu Profile VR Normal/fElevation':'0','Menu Profile VR Normal/fHeightOffset':'0',

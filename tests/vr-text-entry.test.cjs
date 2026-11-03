@@ -8,7 +8,7 @@ const objectSource = source.replace(/^   function (\w+)\(/gm, '$1(').replace(/^ 
 const prototype = Function('return ({' + objectSource + '\n})')();
 if(process.env.SKEE_REBUILT_RACEMENU_AS) {
   const rebuilt=fs.readFileSync(process.env.SKEE_REBUILT_RACEMENU_AS,'utf8');
-  for(const name of ['ShowVRTextDraft','PollVRTextInput','CancelVRTextInput']) {
+  for(const name of ['ShowVRTextDraft','PollVRTextInput','CancelVRTextInput','BeginVRTextInput','RequestVRCharacterCreationFinish','FinishVRCharacterCreation']) {
     const signature=rebuilt.indexOf('function '+name+'(');
     assert.ok(signature>=0,'rebuilt '+name);
     const start=rebuilt.indexOf('{',signature), parameters=rebuilt.slice(signature,start).match(/\(([^)]*)\)/)[1];
@@ -153,8 +153,76 @@ assert.equal(exiting.FinishVRCharacterCreation(),false); assert.equal(completion
 exiting.vrTextInputActive=false; exiting.bottomBar.playerInfo.PlayerName.text='   ';
 assert.equal(exiting.FinishVRCharacterCreation(),false); assert.equal(completionCalls.length,1);
 assert.match(exiting.status,/enter a character name/);
+// Done/keybind still uses the stock confirmation callback. Its new opt-in
+// request opens the existing keyboard; only that session can finish on accept.
+completionCalls.length=0;
+const defaultExit=fixture();
+const beginsBeforeDefault=beginCalls.length;
+for(const option of [undefined,false,0]) {
+  api.promptForNameOnExit=option;
+  assert.equal(defaultExit.RequestVRCharacterCreationFinish(),true);
+}
+assert.equal(beginCalls.length,beginsBeforeDefault);
+assert.equal(completionCalls.length,3);
+completionCalls.length=0;
+api.promptForNameOnExit=true;
+const prompted=fixture();
+assert.equal(prompted.RequestVRCharacterCreationFinish(),true);
+assert.deepEqual(beginCalls.at(-1),['name','Prisoner']);
+assert.equal(prompted.vrTextInputFinishAfterName,true);
+const beganPrompt=beginCalls.length, renamedBefore=names.length;
+assert.equal(prompted.RequestVRCharacterCreationFinish(),false);
+assert.equal(beginCalls.length,beganPrompt);
+pollResult={status:'pending',text:'New name'}; prompted.PollVRTextInput();
+assert.deepEqual(completionCalls,[]);
+pollResult={status:'accepted',text:'  Exit Hero  '}; prompted.PollVRTextInput();
+assert.deepEqual(completionCalls,[['ChangeName',['Exit Hero']]]);
+assert.equal(names.length,renamedBefore,'finishing must not first use non-finishing rename API');
+assert.equal(prompted.vrTextInputFinishAfterName,false);
+prompted.PollVRTextInput();
+assert.equal(completionCalls.length,1,'terminal poll must complete only once');
+for(const result of [{status:'cancelled',text:'discard'},
+                     {status:'unavailable',error:'keyboard_timeout'},
+                     {status:'accepted',text:'   '}]) {
+  completionCalls.length=0;
+  const retry=fixture(); retry.RequestVRCharacterCreationFinish();
+  pollResult=result; retry.PollVRTextInput();
+  assert.deepEqual(completionCalls,[]);
+  assert.equal(retry.bottomBar.playerInfo.PlayerName.text,'Prisoner');
+  assert.equal(retry.vrTextInputFinishAfterName,false);
+  // A later ordinary Name click renames without closing, even with option on.
+  retry.onVRNameButtonClicked();
+  pollResult={status:'accepted',text:'Keep Editing'}; retry.PollVRTextInput();
+  assert.equal(retry.bottomBar.playerInfo.PlayerName.text,'Keep Editing');
+  assert.deepEqual(completionCalls,[]);
+}
+const unloaded=fixture(); unloaded.SetupVRTextButtons(); unloaded.RequestVRCharacterCreationFinish();
+unloaded.onUnload();
+assert.equal(unloaded.vrTextInputActive,false);
+assert.equal(unloaded.vrTextInputFinishAfterName,false);
+completionCalls.length=0;
+const unavailableBegin=api.BeginVRTextEntry;
+api.BeginVRTextEntry=()=>({id:0,status:'unavailable',error:'keyboard_busy'});
+try {
+  const unavailable=fixture();
+  assert.equal(unavailable.RequestVRCharacterCreationFinish(),false);
+  assert.deepEqual(completionCalls,[]);
+  assert.equal(unavailable.vrTextInputActive,undefined);
+} finally { api.BeginVRTextEntry=unavailableBegin; }
+// Filter stays non-finishing; explicit cancellation also clears exit intent.
+const filtering=fixture(); filtering.onVRFilterButtonClicked();
+assert.equal(filtering.vrTextInputFinishAfterName,false);
+pollResult={status:'accepted',text:'hair'}; filtering.PollVRTextInput();
+assert.deepEqual(completionCalls,[]);
+const cancelledPrompt=fixture(); cancelledPrompt.RequestVRCharacterCreationFinish();
+cancelledPrompt.CancelVRTextInput();
+assert.equal(cancelledPrompt.vrTextInputFinishAfterName,false);
+delete api.promptForNameOnExit;
 const patcher=fs.readFileSync(path.join(__dirname,'../tools/patch-vr-racesex-swf.ps1'),'utf8');
-assert.match(patcher,/if\(_global\.skse\.IsVR\(\)\).*FinishVRCharacterCreation/s);
+assert.match(patcher,/if\(_global\.skse\.IsVR\(\)\).*RequestVRCharacterCreationFinish/s);
+const configuration=fs.readFileSync(path.join(__dirname,'../skee64/MenuConfiguration.cpp'),'utf8');
+assert.match(configuration,/Number\(readOption\("VR", "bPromptForNameOnExit"\), 0, 1\) == 1/);
+assert.match(configuration,/RegisterBool\(root, "promptForNameOnExit", promptForNameOnExit\)/);
 // Source guardrails supplement, but do not substitute for native/runtime tests.
 const native=fs.readFileSync(path.join(__dirname,'../skee64/RaceSexMenuVRKeyboard.cpp'),'utf8');
 assert.doesNotMatch(native,/std::async|std::thread|\.wait\(|\.get\(\).*future/);
@@ -174,6 +242,7 @@ assert.match(renameBody,/menu->uiMovie.get\(\) == a_params.movie/);
 const creation=fs.readFileSync(path.join(__dirname,'../skee64/CharacterCreationInterface.cpp'),'utf8');
 assert.match(creation,/#if defined\(ENABLE_SKYRIM_VR\)[\s\S]*GetSetting\("sRSMConfirm"\)[\s\S]*GetType\(\) == RE::Setting::Type::kString[\s\S]*DispatchStaticCall\("Game", "SetGameSettingString"[\s\S]*BSFixedString\("Exit Character Creation\?"\)[\s\S]*#endif/);
 assert.doesNotMatch(creation,/confirmation->SetString/);
+assert.match(creation,/if \(!SKEE::MenuConfiguration::PromptForNameOnExit\(\)\)/);
 const queuedRename=creation.slice(creation.indexOf('CharacterCreationInterface::QueueName'),creation.indexOf('void CharacterCreationInterface::FinishOnGameThread'));
 assert.match(queuedRename,/UpdateCharacterNameWithoutFinishing/);
 assert.doesNotMatch(queuedRename,/ChangeName|kHide|AddMessage/);
@@ -232,7 +301,7 @@ if(process.env.SKEE_REBUILT_RACEMENU_AS) {
   for(;braces;end++) { if(rebuilt[end]==='{') braces++; if(rebuilt[end]==='}') braces--; }
   const exitCallback=Function(rebuilt.slice(start+1,end-1));
   const callbackOwner=fixture(); let finishes=0;
-  callbackOwner.FinishVRCharacterCreation=()=>{finishes++;return true;};
+  callbackOwner.RequestVRCharacterCreationFinish=()=>{finishes++;return true;};
   completionCalls.length=0; exitCallback.call(callbackOwner);
   assert.equal(finishes,1); assert.deepEqual(completionCalls,[]);
   const isVR=_global.skse.IsVR;
@@ -242,6 +311,6 @@ if(process.env.SKEE_REBUILT_RACEMENU_AS) {
     assert.equal(finishes,1);
     assert.deepEqual(completionCalls,[['ShowVirtualKeyboard',[]],['PlaySound',['UIMenuBladeOpenSD']]]);
   } finally { _global.skse.IsVR=isVR; }
-  console.log('Rebuilt exit callback: VR skips naming keyboard; flat callback retained (surrogate).');
+  console.log('Rebuilt exit callback: VR uses configurable finish request; flat callback retained (surrogate).');
 }
 console.log('VR text adapter tests passed (surrogate only; live keyboard/input unqualified).');

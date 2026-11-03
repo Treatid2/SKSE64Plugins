@@ -19,6 +19,7 @@ namespace SKEE::MenuConfiguration
         InitialCategory initialCategory{InitialCategory::All};
         std::string playerName;
         bool overrideExistingPlayerName{};
+        bool promptForNameOnExit{};
         int legacyQuill{-1}, steamVRQuill{-1}, ocuQuill{-1};
         constexpr std::array<const char*, 3> profileNames{ "Flat", "VR Normal", "VR Face" };
         struct Field { const char* key; const char* member; double minimum, maximum; };
@@ -110,6 +111,8 @@ namespace SKEE::MenuConfiguration
             playerName.clear();
         }
         overrideExistingPlayerName = readOption && Number(readOption("VR", "bOverrideExistingPlayerName"), 0, 1) == 1;
+        promptForNameOnExit = readOption && Number(readOption("VR", "bPromptForNameOnExit"), 0, 1) == 1;
+        SKSE::log::info("RaceMenu VR name prompt on exit: enabled={}", promptForNameOnExit);
         const auto quillOption = [](const char* key) {
             const auto value = readOption ? Number(readOption("VR", key), 0, 1) : -9999;
             return value == -9999 ? -1 : static_cast<int>(value);
@@ -122,6 +125,7 @@ namespace SKEE::MenuConfiguration
     bool PlacementForceVertical() { return forceVertical; }
     const std::string& PlayerName() { return playerName; }
     bool OverrideExistingPlayerName() { return overrideExistingPlayerName; }
+    bool PromptForNameOnExit() { return promptForNameOnExit; }
     bool UseQuill()
     {
         const auto runtime = VR::ActiveRuntime();
@@ -131,6 +135,7 @@ namespace SKEE::MenuConfiguration
     }
     void Register(RE::GFxMovie* movie, RE::GFxValue* root)
     {
+        ScaleformUtils::RegisterBool(root, "promptForNameOnExit", promptForNameOnExit);
         if (!readOption) return;
         ScaleformUtils::RegisterNumber(root, "initialCategoryFlag", static_cast<unsigned>(initialCategory));
         RE::GFxValue profiles;

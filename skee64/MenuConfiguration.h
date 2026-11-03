@@ -9,6 +9,7 @@ namespace SKEE::MenuConfiguration
     bool PlacementForceVertical();
     const std::string& PlayerName();
     bool OverrideExistingPlayerName();
+    bool PromptForNameOnExit();
     bool UseQuill();
     void Register(RE::GFxMovie* movie, RE::GFxValue* root);
 }

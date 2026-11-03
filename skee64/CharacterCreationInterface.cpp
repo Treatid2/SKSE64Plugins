@@ -272,21 +272,24 @@ void CharacterCreationInterface::ProbeReady(std::uint32_t a_attempt)
 	auto menu = ui ? ui->GetMenu<RE::RaceSexMenu>() : RE::GPtr<RE::RaceSexMenu>{};
 	if (ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME) && menu && menu->uiMovie) {
 #if defined(ENABLE_SKYRIM_VR)
-		// VR names are accepted inside the menu, not after this confirmation.
+		// The default VR flow accepts names inside the menu. Opting back into
+		// the exit-time prompt retains the stock naming confirmation wording.
 		// Keep the stock confirmation callback and both of its actions intact.
-		auto* settings = RE::GameSettingCollection::GetSingleton();
-		auto* confirmation = settings ? settings->GetSetting("sRSMConfirm") : nullptr;
-		if (confirmation && confirmation->GetType() == RE::Setting::Type::kString) {
-			// SKSE's setter owns the engine-heap allocation and managed-string flag.
-			// CommonLib Setting::SetString uses the CRT allocator instead.
-			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-			RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
-			if (!vm || !vm->DispatchStaticCall("Game", "SetGameSettingString",
-				RE::MakeFunctionArguments(RE::BSFixedString("sRSMConfirm"), RE::BSFixedString("Exit Character Creation?")), result)) {
-				SKSE::log::warn("RaceMenu VR exit confirmation update could not be dispatched");
+		if (!SKEE::MenuConfiguration::PromptForNameOnExit()) {
+			auto* settings = RE::GameSettingCollection::GetSingleton();
+			auto* confirmation = settings ? settings->GetSetting("sRSMConfirm") : nullptr;
+			if (confirmation && confirmation->GetType() == RE::Setting::Type::kString) {
+				// SKSE's setter owns the engine-heap allocation and managed-string flag.
+				// CommonLib Setting::SetString uses the CRT allocator instead.
+				auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+				RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
+				if (!vm || !vm->DispatchStaticCall("Game", "SetGameSettingString",
+					RE::MakeFunctionArguments(RE::BSFixedString("sRSMConfirm"), RE::BSFixedString("Exit Character Creation?")), result)) {
+					SKSE::log::warn("RaceMenu VR exit confirmation update could not be dispatched");
+				}
+			} else {
+				SKSE::log::warn("RaceMenu VR exit confirmation setting unavailable");
 			}
-		} else {
-			SKSE::log::warn("RaceMenu VR exit confirmation setting unavailable");
 		}
 #endif
 		state_.store(kReady);

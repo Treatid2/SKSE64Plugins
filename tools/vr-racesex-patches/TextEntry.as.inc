@@ -1,7 +1,15 @@
-   function FinishVRCharacterCreation()
+   function RequestVRCharacterCreationFinish()
+   {
+      // The stock Done/keybind confirmation reaches ShowTextEntryField.
+      // Restore its naming step only when explicitly enabled in the INI.
+      if(_global.skse.plugins.CharGen.promptForNameOnExit == true)
+         return this.BeginVRTextInput("name",true);
+      return this.FinishVRCharacterCreation();
+   }
+   function FinishVRCharacterCreation(a_name)
    {
       if(this.vrTextInputActive) return false;
-      var name = Shared.GlobalFunc.StringTrim(this.bottomBar.playerInfo.PlayerName.text);
+      var name = Shared.GlobalFunc.StringTrim(a_name == undefined ? this.bottomBar.playerInfo.PlayerName.text : a_name);
       if(name == "" || name == undefined)
       {
          this.setStatusText("Please enter a character name",3000);
@@ -132,7 +140,7 @@
          this.bottomBar.playerInfo.PlayerName._visible = false;
       }
    }
-   function BeginVRTextInput(a_kind)
+   function BeginVRTextInput(a_kind, a_finishAfterName)
    {
       if(this.vrTextInputActive || this.vrInputTraceArmed || this.vrStockButtonAssayActive || this.colorField._visible || this.textEntry._visible || this.makeupPanel._visible || (a_kind == "filter" && this.searchWidget.isDisabled))
          return false;
@@ -155,6 +163,9 @@
       this.vrTextInputActive = true;
       this.vrTextInputId = request.id;
       this.vrTextInputKind = a_kind;
+      // The intent belongs only to this successfully opened name keyboard.
+      // Name/Filter clicks never inherit it from a cancelled exit attempt.
+      this.vrTextInputFinishAfterName = a_kind == "name" && a_finishAfterName == true;
       this.vrTextInputInitial = initial;
       this.SetVRTextInputFeedback(true);
       this.vrTextInputTimer = setInterval(this,"PollVRTextInput",50);
@@ -178,6 +189,8 @@
          this.ShowVRTextDraft(result.text);
          return undefined;
       }
+      var finishAfterName = this.vrTextInputFinishAfterName;
+      this.vrTextInputFinishAfterName = false;
       clearInterval(this.vrTextInputTimer);
       this.vrTextInputTimer = undefined;
       this.SetVRTextInputFeedback(false);
@@ -195,7 +208,14 @@
          else
          {
             var name = Shared.GlobalFunc.StringTrim(result.text);
-            if(name != "" && name != undefined && _global.skse.plugins.CharGen.SetCharacterName(name))
+            if(name != "" && name != undefined && finishAfterName)
+            {
+               // Completion owns the final rename; do not first use the
+               // non-finishing API or re-open the keyboard recursively.
+               this.FinishVRCharacterCreation(name);
+               return undefined;
+            }
+            else if(name != "" && name != undefined && _global.skse.plugins.CharGen.SetCharacterName(name))
                this.SetNameText(name);
             else this.vrTextInputError = "invalid_or_rejected_name";
          }
@@ -224,4 +244,5 @@
          this.ShowVRTextDraft(this.vrTextInputInitial);
       }
       this.vrTextInputActive = false;
+      this.vrTextInputFinishAfterName = false;
    }
