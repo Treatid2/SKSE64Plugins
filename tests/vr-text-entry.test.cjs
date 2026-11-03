@@ -280,7 +280,7 @@ const nameUpdate=fs.readFileSync(path.join(__dirname,'../skee64/CharacterNameUpd
 assert.match(nameUpdate,/SetFullName\(a_name\)/);
 assert.match(nameUpdate,/AddChange\(RE::TESNPC::ChangeFlags::kFullName\)/);
 assert.doesNotMatch(nameUpdate,/menu->ChangeName|kHide|AddMessage/);
-const search=fs.readFileSync(path.join(__dirname,'../tools/vr-racesex-patches/SearchWidget.as'),'utf8');
+const search=fs.readFileSync(process.env.SKEE_REBUILT_SEARCH_WIDGET_AS || path.join(__dirname,'../tools/vr-racesex-patches/SearchWidget.as'),'utf8');
 assert.doesNotMatch(search,/ShowVirtualKeyboard/);
 // Execute the actual SearchWidget startInput body up to its matching brace.
 const bodyStart=search.indexOf('{',search.indexOf('function startInput()'));
