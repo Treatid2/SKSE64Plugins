@@ -1,6 +1,5 @@
-// Controlled tests of the actual production relink/clone policies, not engine ABI.
+// Controlled tests of the actual production relink policy, not engine ABI.
 #include "HeadExportPolicy.h"
-#include "ExportSkinClonePolicy.h"
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -30,21 +29,18 @@ int main()
                 [](int*) -> std::shared_ptr<int> { throw std::runtime_error("clone"); });
         } catch (const std::runtime_error&) { threw = true; }
         check(threw && descriptor == 11 && target == oldSkin, "clone exception changed geometry");
-        const auto aliases = [&](int* skin) {
-            return SKEE::RequestIndependentExportSkin(skin, [&](int*) { return source; });
-        };
-        const auto references = source.use_count();
-        check(!HeadExportPolicy::TryRelinkSkin(descriptor, target, 22u, source, aliases), "source alias accepted");
-        check(descriptor == 11 && target == oldSkin && source.use_count() == references, "alias refusal changed state/lifetime");
         auto replacement = std::make_shared<int>(3);
         const auto independent = [&](int* skin) {
-            return SKEE::RequestIndependentExportSkin(skin, [&](int* input) {
-                check(input == source.get(), "wrong source");
-                return replacement;
-            });
+            check(skin == source.get(), "wrong source");
+            return replacement;
         };
         check(HeadExportPolicy::TryRelinkSkin(descriptor, target, 22u, source, independent), "valid clone refused");
         check(descriptor == 22 && target == replacement && *source == 2, "replacement pair not committed");
+        // Relinking assigns the clone; it does not mutate it. Preserve the
+        // release line's behavior if the engine returns the source itself.
+        check(HeadExportPolicy::TryRelinkSkin(descriptor, target, 33u, source,
+            [&](int*) { return source; }), "existing successful alias behavior changed");
+        check(descriptor == 33 && target == source && *source == 2, "alias result was mutated or lost");
         std::cout << checks << " overlay relink checks passed\n";
         return 0;
     } catch (const std::exception& error) {

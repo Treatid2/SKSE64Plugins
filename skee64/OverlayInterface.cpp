@@ -15,7 +15,6 @@
 #include "SKEEHooks.h"
 #include "Utilities.h"
 #include "HeadExportPolicy.h"
-#include "ExportSkinClonePolicy.h"
 
 // windows.h maps the Win32 API name to an intrinsic, which would hide the
 // REX::W32 declaration below.
@@ -351,13 +350,12 @@ void OverlayInterface::RelinkOverlay(const char * nodeName, RE::TESObjectREFR * 
 	{
 		auto sourceSkin = source->GetGeometryRuntimeData().skinInstance;
 		// Prepare the replacement before changing either coupled field. Keep
-		// the old descriptor/skin pair when cloning fails or aliases the source.
+		// the old descriptor/skin pair when cloning fails. Successful cloning
+		// retains this release line's existing engine Clone semantics.
 		HeadExportPolicy::TryRelinkSkin(foundGeometry->vertexDesc,
 			foundGeometry->GetGeometryRuntimeData().skinInstance,
 			source->vertexDesc, sourceSkin, [](RE::NiSkinInstance* skin) {
-				return SKEE::RequestIndependentExportSkin(skin, [](RE::NiSkinInstance* original) {
-					return RE::NiPointer<RE::NiSkinInstance>(static_cast<RE::NiSkinInstance*>(original->Clone()));
-				});
+				return RE::NiPointer<RE::NiSkinInstance>(static_cast<RE::NiSkinInstance*>(skin->Clone()));
 			});
 	}
 }
